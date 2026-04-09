@@ -39,5 +39,20 @@ export const alcantarillasApi = {
     eliminarVenta:    (id)       => api.delete(`/alcantarillas/ventas/${id}`)
 };
 
+export const bancoApi = {
+    getFondoGlobal: () => api.get('/banco/fondo-global'),
+};
+
+export const prestamosApi = {
+    getAll:          ()         => api.get('/prestamos'),
+    getById:         (id)       => api.get(`/prestamos/${id}`),
+    getStats:        ()         => api.get('/prestamos/estadisticas'),
+    create:          (data)     => api.post('/prestamos', data),
+    update:          (id, data) => api.put(`/prestamos/${id}`, data),
+    delete:          (id)       => api.delete(`/prestamos/${id}`),
+    registrarAbono:  (id, data) => api.post(`/prestamos/${id}/abonos`, data),
+    eliminarAbono:   (id)       => api.delete(`/prestamos/abonos/${id}`),
+};
 
 export default api;
+

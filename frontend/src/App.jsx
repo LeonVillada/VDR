@@ -10,7 +10,9 @@ import {
   CreditCard,
   Menu,
   X,
-  Zap
+  Zap,
+  Building2,
+  HandCoins
 } from 'lucide-react';
 
 import Dashboard    from './pages/Dashboard';
@@ -18,6 +20,8 @@ import Personas     from './pages/Personas';
 import Pagos        from './pages/Pagos';
 import GestionMetas from './pages/GestionMetas';
 import Alcantarilla from './pages/Alcantarilla';
+import BancoGeneral from './pages/BancoGeneral';
+import Prestamos    from './pages/Prestamos';
 
 const SidebarItem = ({ to, icon: Icon, label, onClick }) => {
   const location = useLocation();
@@ -77,6 +81,9 @@ function App() {
             <SidebarItem to="/pagos" icon={CreditCard} label="Pagos" onClick={closeSidebar} />
             <SidebarItem to="/metas" icon={TrendingUp} label="Gestión Metas" onClick={closeSidebar} />
             <SidebarItem to="/alcantarilla" icon={Zap} label="La Alcantarilla" onClick={closeSidebar} />
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', margin: '0.5rem 0' }} />
+            <SidebarItem to="/banco" icon={Building2} label="Banco General VDR" onClick={closeSidebar} />
+            <SidebarItem to="/prestamos" icon={HandCoins} label="Préstamos" onClick={closeSidebar} />
           </nav>
         </aside>
 
@@ -88,6 +95,8 @@ function App() {
               <Route path="/pagos" element={<Pagos />} />
               <Route path="/metas" element={<GestionMetas />} />
               <Route path="/alcantarilla" element={<Alcantarilla />} />
+              <Route path="/banco" element={<BancoGeneral />} />
+              <Route path="/prestamos" element={<Prestamos />} />
             </Routes>
           </div>
 
