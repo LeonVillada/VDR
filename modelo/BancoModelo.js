@@ -178,6 +178,7 @@ class BancoModelo {
                 deudoresCuotas.push({
                     nombre: p.nombre,
                     quincenas_pendientes: estado.quincenas_en_mora.length,
+                    quincenas_detalle: estado.quincenas_en_mora.join(', '),
                     cuota: p.cuota,
                     monto_deuda: Math.max(estado.total_deuda, 0)
                 });

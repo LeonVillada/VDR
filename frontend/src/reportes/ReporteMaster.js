@@ -87,6 +87,8 @@ export const generateMasterPDF = async (data, banco) => {
     }, 0);
     
     const interesEsperado = data.prestamos_activos.reduce((s, p) => s + Number(p.interes_cobrado), 0);
+    const sumaPendientes = cuotasPendientesTotal + alcantarillaPendientesTotal + interesEsperado + prestadoCuotas;
+    const granTotalGeneral = sumaPendientes + banco.fondo_total;
 
     // --- 1. RESUMEN GLOBAL ---
     doc.setFontSize(14);
@@ -105,7 +107,7 @@ export const generateMasterPDF = async (data, banco) => {
                 { content: fmt(banco.fuentes.cuotas), rowSpan: 3, styles: { valign: 'middle', fontStyle: 'bold', halign: 'right' } }
             ],
             ['Total Gastos Deducidos', `-${fmt(gastosCuotas)}`, ''],
-            ['Capital Prestado (En la calle)', `-${fmt(prestadoCuotas)}`, ''],
+            ['Capital Prestado', `-${fmt(prestadoCuotas)}`, ''],
             
             [
                 { content: 'LA ALCANTARILLA', rowSpan: 3, styles: { valign: 'middle', fontStyle: 'bold' } },
@@ -121,6 +123,16 @@ export const generateMasterPDF = async (data, banco) => {
                 { content: fmt(banco.fuentes.intereses_prestamos), rowSpan: 2, styles: { valign: 'middle', fontStyle: 'bold', halign: 'right', textColor: cGreen } }
             ],
             ['Intereses Netos Recaudados', fmt(data.totales_historicos.ganancias), ''],
+            
+            [
+                { content: 'GRAN TOTAL CERRADO', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold', valign: 'middle', fillColor: cDark, textColor: cWhite } },
+                { content: `Por recuperar:\n${fmt(sumaPendientes)}`, styles: { halign: 'right', fontStyle: 'bold', valign: 'middle', fillColor: [240, 240, 240], textColor: [220, 38, 38] } },
+                { content: `Caja Real:\n${fmt(banco.fondo_total)}`, styles: { halign: 'right', fontStyle: 'bold', valign: 'middle', fillColor: [209, 250, 229], textColor: [4, 120, 87] } }
+            ],
+            [
+                { content: 'PATRIMONIO GLOBAL TOTAL (Por Recuperar + Caja Real)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold', valign: 'middle', fillColor: [226, 232, 240], textColor: cDark } },
+                { content: fmt(granTotalGeneral), styles: { halign: 'right', fontStyle: 'bold', valign: 'middle', fillColor: [187, 247, 208], textColor: [4, 120, 87] } }
+            ]
         ],
         theme: 'grid',
         headStyles: { fillColor: cGreen, textColor: cWhite, halign: 'center' },
@@ -131,28 +143,27 @@ export const generateMasterPDF = async (data, banco) => {
     y = doc.lastAutoTable.finalY + 15;
 
     // --- 2. DEUDORES CUOTAS ---
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('2. INTEGRANTES CON MORA (CUOTAS)', margin, y);
-    y += 8;
+    if (data.deudores_cuotas && data.deudores_cuotas.length > 0) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...cDark);
+        doc.text('2. INTEGRANTES CON MORA (CUOTAS)', margin, y);
+        y += 8;
 
-    if (data.deudores_cuotas.length > 0) {
         autoTable(doc, {
             startY: y,
-            head: [['NOMBRE INTEGRANTE', 'QUINCENAS PEND.', 'TOTAL DEUDA']],
-            body: data.deudores_cuotas.map(d => [d.nombre.toUpperCase(), d.quincenas_pendientes, fmt(d.monto_deuda)]),
+            head: [['NOMBRE INTEGRANTE', 'QUINCENAS PENDIENTES', 'TOTAL DEUDA']],
+            body: data.deudores_cuotas.map(d => [
+                d.nombre.toUpperCase(), 
+                d.quincenas_detalle ? d.quincenas_detalle.toUpperCase() : `${d.quincenas_pendientes} Qs`, 
+                fmt(d.monto_deuda)
+            ]),
             theme: 'striped',
             headStyles: { fillColor: [239, 68, 68] },
             styles: { fontSize: 8 },
             columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right', fontStyle: 'bold' } }
         });
         y = doc.lastAutoTable.finalY + 15;
-    } else {
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'italic');
-        doc.setTextColor(...cGrey);
-        doc.text('No hay integrantes con mora en cuotas quincenales. El fondo está al día.', margin, y);
-        y += 12;
     }
 
     // --- 3. PRÉSTAMOS ACTIVOS ---
