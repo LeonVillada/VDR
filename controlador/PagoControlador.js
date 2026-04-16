@@ -65,10 +65,38 @@ const obtenerEstadisticas = async (req, res) => {
     }
 };
 
+const registrarPagoGlobal = async (req, res) => {
+    try {
+        const { quincena, fecha } = req.body;
+        const totalInsertados = await PagoModelo.crearGlobal({
+            quincena,
+            fecha: fecha || new Date().toISOString().split('T')[0]
+        });
+        res.status(201).json({ 
+            mensaje: `Se registraron ${totalInsertados} pagos exitosamente`, 
+            total: totalInsertados 
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+const registrarLote = async (req, res) => {
+    try {
+        const { pagos } = req.body;
+        const total = await PagoModelo.crearLote(pagos);
+        res.status(201).json({ mensaje: `Se registraron ${total} pagos exitosamente`, total });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     obtenerPagos,
     obtenerPagosPorPersona,
     registrarPago,
     eliminarPago,
-    obtenerEstadisticas
+    obtenerEstadisticas,
+    registrarPagoGlobal,
+    registrarLote
 };

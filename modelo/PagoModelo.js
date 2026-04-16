@@ -51,6 +51,41 @@ class PagoModelo {
             deudaTotal: deudaTotal[0].total_deuda || 0
         };
     }
+
+    static async crearGlobal(datos) {
+        const { quincena, fecha } = datos;
+        // Insertar para todos los activos que NO tengan ya pago en esta quincena
+        const query = `
+            INSERT INTO pagos (persona_id, fecha, monto, quincena)
+            SELECT id, ?, cuota, ? 
+            FROM personas 
+            WHERE estado = 'activo'
+            AND id NOT IN (SELECT persona_id FROM pagos WHERE quincena = ?)
+        `;
+        const [result] = await conexionPromise.query(query, [fecha, quincena, quincena]);
+        return result.affectedRows;
+    }
+
+    static async crearLote(pagos) {
+        // pagos: [{ persona_id, fecha, monto, quincena }, ...]
+        if (!pagos || pagos.length === 0) return 0;
+        
+        const connection = await conexionPromise.getConnection();
+        try {
+            await connection.beginTransaction();
+            const query = 'INSERT INTO pagos (persona_id, fecha, monto, quincena) VALUES (?, ?, ?, ?)';
+            for (const pago of pagos) {
+                await connection.query(query, [pago.persona_id, pago.fecha, pago.monto, pago.quincena]);
+            }
+            await connection.commit();
+            return pagos.length;
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
 }
 
 module.exports = PagoModelo;

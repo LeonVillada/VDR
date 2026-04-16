@@ -98,14 +98,19 @@ export default function Alcantarilla() {
         e.preventDefault();
         setError('');
         try {
-            // Forzar valores fijos de negocio
-            await alcantarillasApi.create({
-                ...formAlc,
-                precio_boleta:    PRECIO_BOLETA,
-                tope_por_persona: BOLETAS_POR_PERSONA
-            });
+            const formData = new FormData();
+            formData.append('nombre', formAlc.nombre);
+            formData.append('fecha', formAlc.fecha);
+            formData.append('costo_premio', formAlc.costo_premio);
+            formData.append('precio_boleta', PRECIO_BOLETA);
+            formData.append('tope_por_persona', BOLETAS_POR_PERSONA);
+            if (formAlc.comprobante) {
+                formData.append('comprobante', formAlc.comprobante);
+            }
+
+            await alcantarillasApi.create(formData);
             setShowModal(false);
-            setFormAlc({ nombre: '', fecha: '', precio_boleta: PRECIO_BOLETA, costo_premio: 0, tope_por_persona: BOLETAS_POR_PERSONA });
+            setFormAlc({ nombre: '', fecha: '', precio_boleta: PRECIO_BOLETA, costo_premio: 0, tope_por_persona: BOLETAS_POR_PERSONA, comprobante: null });
             cargar();
         } catch (e) { setError(e.response?.data?.error || 'Error al crear'); }
     };
@@ -139,79 +144,82 @@ export default function Alcantarilla() {
         const doc = new jsPDF();
         const W = doc.internal.pageSize.getWidth();
         const H = doc.internal.pageSize.getHeight();
+        const margin = 15;
 
-        // -- Imagen de fondo --
+        // Colores corporativos
+        const cGreen  = [16, 185, 129];
+        const cGrey   = [120, 120, 120];
+        const cWhite  = [255, 255, 255];
+        const cYellow = [245, 200, 50];
+        const cDark   = [15, 23, 42];
+
+        let logoBase64 = null;
         try {
-            const imgRes = await fetch('/assets/buffonVDR.png');
-            const blob   = await imgRes.blob();
-            const b64    = await new Promise(resolve => {
+            const res = await fetch('/assets/verdaderos-logo.png');
+            const blob = await res.blob();
+            logoBase64 = await new Promise(resolve => {
                 const reader = new FileReader();
                 reader.onloadend = () => resolve(reader.result);
                 reader.readAsDataURL(blob);
             });
-            doc.addImage(b64, 'PNG', 0, 0, W, H, undefined, 'FAST');
-        } catch (e) { console.warn('Sin imagen:', e); }
+        } catch (e) { console.warn('Logo no cargado', e); }
 
-        // -- Overlay claro (45%) para que la imagen sea visible --
-        doc.setFillColor(0, 0, 0);
-        doc.setGState(new doc.GState({ opacity: 0.45 }));
-        doc.rect(0, 0, W, H, 'F');
-        doc.setGState(new doc.GState({ opacity: 1 }));
+        const drawAesthetics = (docInstance) => {
+            // Marca de agua
+            if (logoBase64) {
+                docInstance.saveGraphicsState();
+                docInstance.setGState(new docInstance.GState({ opacity: 0.05 }));
+                docInstance.addImage(logoBase64, 'PNG', W/2 - 60, H/2 - 30, 120, 35, undefined, 'FAST');
+                docInstance.restoreGraphicsState();
+            }
 
-        const cWhite  = [255, 255, 255];
-        const cGreen  = [16, 185, 129];
-        const cGrey   = [160, 160, 160];
-        const cYellow = [245, 200, 50];
+            // Header Oscuro
+            docInstance.setFillColor(...cDark);
+            docInstance.rect(0, 0, W, 40, 'F');
+            
+            if (logoBase64) docInstance.addImage(logoBase64, 'PNG', margin, 10, 50, 15);
 
-        // -- Header SIN FONDO (texto sobre la imagen) --
-        doc.setFontSize(26);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...cGreen);
-        doc.text('VERDADEROS', 15, 18);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...cGrey);
-        doc.text('LA ALCANTARILLA - ' + alc.nombre.toUpperCase(), 15, 26);
-        doc.text(
-            new Date(alc.fecha).toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric' }),
-            15, 32
-        );
-        doc.text('VDRSOFTWARE', W - 15, 26, { align: 'right' });
+            docInstance.setFontSize(20);
+            docInstance.setFont('helvetica', 'bold');
+            docInstance.setTextColor(...cGreen);
+            docInstance.text('LA ALCANTARILLA', W - margin, 18, { align: 'right' });
+            
+            docInstance.setFontSize(8);
+            docInstance.setTextColor(180, 180, 180);
+            docInstance.text(alc.nombre.toUpperCase(), W - margin, 26, { align: 'right' });
+            docInstance.text(new Date(alc.fecha).toLocaleDateString(), W - margin, 32, { align: 'right' });
 
-        // Linea separadora verde bajo el header
-        doc.setDrawColor(...cGreen);
-        doc.setLineWidth(0.5);
-        doc.line(14, 36, W - 14, 36);
+            docInstance.setDrawColor(...cGreen);
+            docInstance.line(margin, 40, W - margin, 40);
+        };
 
-        // -- Calculos --
+        drawAesthetics(doc);
+
         const totalRecaudado = ventas.reduce((s, v) => s + Number(v.monto_pagado), 0);
         const meta           = personas.length * META_POR_PERSONA;
-        const listosCount    = ventas.filter(v => Number(v.monto_pagado) >= META_POR_PERSONA).length;
 
-        // -- Solo 2 cajas: META y RECAUDADO --
-        let y = 44;
-        const boxW = 84;  // cajas mas anchas ya que solo son 2
+        // Cajas de resumen
+        const boxW = 85;
         const box = (label, value, x, borderColor) => {
             doc.setDrawColor(...borderColor);
-            doc.setLineWidth(0.7);
-            doc.roundedRect(x, y, boxW, 24, 2, 2, 'S');
+            doc.setLineWidth(0.5);
+            doc.roundedRect(x, 48, boxW, 18, 2, 2, 'S');
             doc.setFontSize(7);
-            doc.setFont('helvetica', 'normal');
             doc.setTextColor(...cGrey);
-            doc.text(label, x + 4, y + 8);
-            doc.setFontSize(13);
+            doc.text(label, x + 4, 54);
+            doc.setFontSize(11);
             doc.setFont('helvetica', 'bold');
-            doc.setTextColor(...cWhite);
-            doc.text(value, x + 4, y + 19);
+            doc.setTextColor(...cDark);
+            doc.text(value, x + 4, 62);
         };
-        box('META TOTAL DE LA ALCANTARILLA', '$' + meta.toLocaleString(), 14, cGreen);
-        box('RECOGIDO HASTA AHORA',          '$' + totalRecaudado.toLocaleString(), 102, cYellow);
+        box('META TOTAL EVENTO', '$' + meta.toLocaleString(), 15, cGreen);
+        box('RECAUDADO ACTUAL',  '$' + totalRecaudado.toLocaleString(), 110, cYellow);
 
         // -- Tabla alfabetica: NOMBRE, PAGADO, ESTADO --
-        y += 34;
+        let y = 78;
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...cWhite);
+        doc.setTextColor(...cDark);
         doc.text('ESTADO POR INTEGRANTE', 14, y);
         doc.setDrawColor(...cGreen);
         doc.setLineWidth(0.5);
@@ -244,13 +252,13 @@ export default function Alcantarilla() {
             },
             styles: {
                 fontSize: 8,
-                textColor: cWhite,
+                textColor: [40, 40, 40],
                 fillColor: false,
                 cellPadding: 3,
-                lineColor: [70, 70, 70],
-                lineWidth: 0.2
+                lineColor: [220, 220, 220],
+                lineWidth: 0.1
             },
-            alternateRowStyles: { fillColor: false },
+            alternateRowStyles: { fillColor: [250, 250, 250] },
             columnStyles: {
                 0: { cellWidth: 80 },
                 1: { halign: 'right' },
@@ -258,9 +266,12 @@ export default function Alcantarilla() {
             },
             didParseCell(data) {
                 if (data.column.index === 2 && data.section === 'body') {
-                    data.cell.styles.textColor = data.cell.raw === 'PAGADO' ? cGreen : cYellow;
+                    data.cell.styles.textColor = data.cell.raw === 'PAGADO' ? cGreen : [245, 158, 11];
                 }
-                data.cell.styles.fillColor = false;
+                data.cell.styles.fillColor = data.row.index % 2 === 0 ? [252, 252, 252] : false;
+            },
+            didDrawPage: (data) => {
+                if (data.pageNumber > 1) drawAesthetics(doc);
             }
         });
 
@@ -363,19 +374,28 @@ export default function Alcantarilla() {
                             onClick={() => toggleExpandir(alc.id)}
                             style={{ padding: '1.2rem 1.5rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}
                         >
-                            <div>
-                                <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>🎰 {alc.nombre}</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                    {new Date(alc.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
-                                    {' · '}{listosParaJugar}/{alc.personas_registradas} integrantes completos
-                                </div>
-                                {/* Barra de progreso global */}
-                                <div style={{ marginTop: '6px', width: '260px' }}>
-                                    <div style={{ height: '5px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
-                                        <div style={{ width: `${pctGlobal}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.4s' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                                {alc.comprobante_premio && (
+                                    <img 
+                                        src={`http://${window.location.hostname}:2014/uploads/${alc.comprobante_premio}`} 
+                                        style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'cover', border: '1px solid var(--glass-border)' }}
+                                        alt="Factura"
+                                    />
+                                )}
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>🎰 {alc.nombre}</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                        {new Date(alc.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                        {' · '}{listosParaJugar}/{alc.personas_registradas} integrantes completos
                                     </div>
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '3px' }}>
-                                        {boletasVendidas}/{totalBoletas} boletas · {pctGlobal.toFixed(0)}% del total
+                                    {/* Barra de progreso global */}
+                                    <div style={{ marginTop: '6px', width: '260px' }}>
+                                        <div style={{ height: '5px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ width: `${pctGlobal}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.4s' }} />
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                                            {boletasVendidas}/{totalBoletas} boletas · {pctGlobal.toFixed(0)}% del total
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -496,9 +516,16 @@ export default function Alcantarilla() {
                                     onChange={e => setFormAlc(p => ({ ...p, fecha: e.target.value }))} />
                             </div>
                             <div className="form-group">
-                                <label>Precio del Premio ($) — fijo por evento</label>
+                                <label>Precio del Premio ($)</label>
                                 <input type="number" min="0" placeholder="Ej: 50000" value={formAlc.costo_premio}
                                     onChange={e => setFormAlc(p => ({ ...p, costo_premio: e.target.value }))} />
+                            </div>
+
+                            <div className="form-group">
+                                <label>Foto de la Factura del Premio</label>
+                                <input type="file" accept="image/*"
+                                    onChange={e => setFormAlc(p => ({ ...p, comprobante: e.target.files[0] }))} />
+                                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Opcional: puedes subir la foto del recibo.</p>
                             </div>
 
                             {/* Campos fijos — solo informativos */}

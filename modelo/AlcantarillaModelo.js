@@ -4,11 +4,11 @@ class AlcantarillaModelo {
 
     // ── ALCANTARILLAS ──────────────────────────────────────────
     static async crear(datos) {
-        const { nombre, fecha, precio_boleta, costo_premio, tope_por_persona } = datos;
+        const { nombre, fecha, precio_boleta, costo_premio, tope_por_persona, comprobante_premio } = datos;
         const [result] = await conexion.query(
-            `INSERT INTO alcantarillas (nombre, fecha, precio_boleta, costo_premio, tope_por_persona)
-             VALUES (?, ?, ?, ?, ?)`,
-            [nombre, fecha, precio_boleta || 3000, costo_premio || 0, tope_por_persona || 10]
+            `INSERT INTO alcantarillas (nombre, fecha, precio_boleta, costo_premio, tope_por_persona, comprobante_premio)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [nombre, fecha, precio_boleta || 3000, costo_premio || 0, tope_por_persona || 10, comprobante_premio || null]
         );
         return result.insertId;
     }
@@ -33,10 +33,10 @@ class AlcantarillaModelo {
     }
 
     static async actualizar(id, datos) {
-        const { nombre, fecha, precio_boleta, costo_premio, tope_por_persona, estado } = datos;
+        const { nombre, fecha, precio_boleta, costo_premio, tope_por_persona, estado, comprobante_premio } = datos;
         await conexion.query(
-            `UPDATE alcantarillas SET nombre=?, fecha=?, precio_boleta=?, costo_premio=?, tope_por_persona=?, estado=? WHERE id=?`,
-            [nombre, fecha, precio_boleta, costo_premio, tope_por_persona, estado, id]
+            `UPDATE alcantarillas SET nombre=?, fecha=?, precio_boleta=?, costo_premio=?, tope_por_persona=?, estado=?, comprobante_premio=? WHERE id=?`,
+            [nombre, fecha, precio_boleta, costo_premio, tope_por_persona, estado, comprobante_premio, id]
         );
     }
 

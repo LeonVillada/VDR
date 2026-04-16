@@ -556,7 +556,7 @@ const Prestamos = () => {
             {stats && (
                 <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: '1.5rem' }}>
                     <StatCard label="Capital Prestado"    value={fmt(stats.capital_total_prestado)}  icon={DollarSign}  color="#f59e0b" />
-                    <StatCard label="Intereses Esperados" value={fmt(stats.intereses_esperados)}     icon={TrendingUp}  color="#6366f1" />
+                    <StatCard label="Intereses Pendientes" value={fmt(stats.intereses_esperados)}     icon={TrendingUp}  color="#6366f1" />
                     <StatCard label="Intereses Cobrados"  value={fmt(stats.intereses_cobrados)}      icon={HandCoins}   color="#10b981" />
                     <StatCard label="Saldo Pendiente"     value={fmt(stats.saldo_pendiente)}         icon={AlertCircle} color="#ef4444" />
                     <StatCard label="Préstamos Activos"   value={stats.activos}                      icon={Clock}       color="#22d3ee" />

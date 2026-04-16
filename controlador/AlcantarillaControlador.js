@@ -12,7 +12,15 @@ const obtenerAlcantarillas = async (req, res) => {
 
 const crearAlcantarilla = async (req, res) => {
     try {
-        const id = await AlcantarillaModelo.crear(req.body);
+        const datos = { ...req.body };
+        if (req.file) datos.comprobante_premio = req.file.filename;
+
+        // Convertir strings numéricos de form-data
+        if (datos.precio_boleta) datos.precio_boleta = Number(datos.precio_boleta);
+        if (datos.costo_premio) datos.costo_premio = Number(datos.costo_premio);
+        if (datos.tope_por_persona) datos.tope_por_persona = Number(datos.tope_por_persona);
+
+        const id = await AlcantarillaModelo.crear(datos);
         res.status(201).json({ mensaje: 'Alcantarilla creada', id });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -21,7 +29,15 @@ const crearAlcantarilla = async (req, res) => {
 
 const actualizarAlcantarilla = async (req, res) => {
     try {
-        await AlcantarillaModelo.actualizar(req.params.id, req.body);
+        const datos = { ...req.body };
+        if (req.file) datos.comprobante_premio = req.file.filename;
+
+        // Convertir strings numéricos
+        if (datos.precio_boleta) datos.precio_boleta = Number(datos.precio_boleta);
+        if (datos.costo_premio) datos.costo_premio = Number(datos.costo_premio);
+        if (datos.tope_por_persona) datos.tope_por_persona = Number(datos.tope_por_persona);
+
+        await AlcantarillaModelo.actualizar(req.params.id, datos);
         res.json({ mensaje: 'Alcantarilla actualizada' });
     } catch (e) {
         res.status(500).json({ error: e.message });

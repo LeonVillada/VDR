@@ -13,6 +13,31 @@ async function migrarDatosInteligente() {
     try {
         console.log('🔄 Iniciando migración inteligente de abonos mixtos...');
 
+        // Crear tabla de gastos
+        await conn.execute(`
+            CREATE TABLE IF NOT EXISTS gastos (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                evento VARCHAR(255) NOT NULL,
+                precio DECIMAL(10, 2) NOT NULL,
+                fondo VARCHAR(255) NOT NULL,
+                observaciones TEXT,
+                sin_factura BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB;
+        `);
+
+        // Crear tabla de facturas
+        await conn.execute(`
+            CREATE TABLE IF NOT EXISTS facturas (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                gasto_id INT NOT NULL,
+                imagen VARCHAR(255) NOT NULL,
+                FOREIGN KEY (gasto_id) REFERENCES gastos(id)
+            ) ENGINE=InnoDB;
+        `);
+
+        console.log('✅ Tablas de gastos y facturas creadas o ya existentes.');
+
         // 1. Obtener todos los abonos mixtos que tengan 0 en ambos desgloses
         const [abonos] = await conn.execute(`
             SELECT a.*, p.interes_cobrado, p.monto_original 

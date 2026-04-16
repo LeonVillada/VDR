@@ -9,7 +9,7 @@ class PrestamoModelo {
         const [result] = await conexion.query(
             `INSERT INTO prestamos (responsable, fuente_id, monto_original, interes_cobrado, fecha_prestamo, fecha_vencimiento, notas)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [responsable, fuente_id || 'cuotas', monto_original, interes_cobrado || 0, fecha_prestamo, fecha_vencimiento, notas || null]
+            [responsable, fuente_id || 1, monto_original, interes_cobrado || 0, fecha_prestamo, fecha_vencimiento, notas || null]
         );
         return result.insertId;
     }
@@ -69,7 +69,31 @@ class PrestamoModelo {
     // ── ABONOS ─────────────────────────────────────────────────
 
     static async registrarAbono(datos) {
-        const { prestamo_id, fecha_abono, monto_abono, tipo_abono, capital_pagado, interes_pagado, notas } = datos;
+        let { prestamo_id, fecha_abono, monto_abono, tipo_abono, capital_pagado, interes_pagado, notas } = datos;
+
+        // Si no vienen valores detallados, aplicar lógica de prioridades (Capital primero)
+        if ((!capital_pagado || Number(capital_pagado) === 0) && (!interes_pagado || Number(interes_pagado) === 0)) {
+            const [[prestamo]] = await conexion.query(`
+                SELECT p.monto_original, p.interes_cobrado, 
+                       COALESCE(SUM(a.capital_pagado), 0) as capital_ya_pagado,
+                       COALESCE(SUM(a.interes_pagado), 0) as interes_ya_pagado
+                FROM prestamos p
+                LEFT JOIN prestamo_abonos a ON a.prestamo_id = p.id
+                WHERE p.id = ?
+                GROUP BY p.id
+            `, [prestamo_id]);
+
+            if (prestamo) {
+                let montoRestante = Number(monto_abono);
+                let capPendiente = Math.max(0, Number(prestamo.monto_original) - Number(prestamo.capital_ya_pagado));
+                let intPendiente = Math.max(0, Number(prestamo.interes_cobrado) - Number(prestamo.interes_ya_pagado));
+
+                capital_pagado = Math.min(montoRestante, capPendiente);
+                montoRestante -= capital_pagado;
+                interes_pagado = Math.min(montoRestante, intPendiente);
+            }
+        }
+
         const [result] = await conexion.query(
             `INSERT INTO prestamo_abonos (prestamo_id, fecha_abono, monto_abono, tipo_abono, capital_pagado, interes_pagado, notas)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -143,7 +167,7 @@ class PrestamoModelo {
         return {
             total_prestamos:       Number(capsStats.total_prestamos),
             capital_total_prestado: Number(capsStats.capital_total_prestado),
-            intereses_esperados:   Number(capsStats.intereses_esperados),
+            intereses_esperados:   Number(capsStats.intereses_esperados) - Number(abonosStats.intereses_cobrados),
             intereses_cobrados:    Number(abonosStats.intereses_cobrados),
             total_abonado:         Number(abonosStats.total_abonado),
             saldo_pendiente:       Number(saldoStats.saldo_total),
