@@ -4,12 +4,67 @@ class PrestamoModelo {
 
     // ── PRÉSTAMOS ──────────────────────────────────────────────
 
+    static async validarFuenteId(fuente_id) {
+        const [[fuente]] = await conexion.query(
+            `SELECT id FROM fondos WHERE id = ?`,
+            [fuente_id]
+        );
+        return !!fuente; // Devuelve true si existe, false si no
+    }
+
+    static async obtenerFuenteCuotas() {
+        const [[fondo]] = await conexion.query(
+            `SELECT id FROM fondos WHERE nombre = 'cuotas'`
+        );
+        if (!fondo) {
+            const [result] = await conexion.query(
+                `INSERT INTO fondos (nombre) VALUES ('cuotas')`
+            );
+            return result.insertId;
+        }
+        return fondo.id;
+    }
+
+    // Resolver fuente_id: acepta nombre (string) o id (number)
+    static async resolverFuenteId(fuente_id) {
+        if (!fuente_id) return await this.obtenerFuenteCuotas();
+
+        // Si ya es un número válido, usarlo directamente
+        if (!isNaN(fuente_id) && Number(fuente_id) > 0) {
+            return Number(fuente_id);
+        }
+
+        // Si es un string (nombre del fondo), buscar su ID
+        const [[fondo]] = await conexion.query(
+            `SELECT id FROM fondos WHERE nombre = ?`,
+            [String(fuente_id).toLowerCase()]
+        );
+        if (fondo) return fondo.id;
+
+        // Fallback: crear el fondo si no existe
+        const [result] = await conexion.query(
+            `INSERT INTO fondos (nombre) VALUES (?)`,
+            [String(fuente_id).toLowerCase()]
+        );
+        return result.insertId;
+    }
+
     static async crear(datos) {
         const { responsable, fuente_id, monto_original, interes_cobrado, fecha_prestamo, fecha_vencimiento, notas } = datos;
+
+        // Resolver fuente_id (acepta nombre string o id numérico)
+        const fuenteIdFinal = await this.resolverFuenteId(fuente_id);
+
+        // Validar si el fuente_id existe
+        const fuenteValida = await this.validarFuenteId(fuenteIdFinal);
+        if (!fuenteValida) {
+            throw new Error(`El fuente_id ${fuenteIdFinal} no existe en la tabla fondos.`);
+        }
+
         const [result] = await conexion.query(
             `INSERT INTO prestamos (responsable, fuente_id, monto_original, interes_cobrado, fecha_prestamo, fecha_vencimiento, notas)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [responsable, fuente_id || 1, monto_original, interes_cobrado || 0, fecha_prestamo, fecha_vencimiento, notas || null]
+            [responsable, fuenteIdFinal, monto_original, interes_cobrado || 0, fecha_prestamo, fecha_vencimiento, notas || null]
         );
         return result.insertId;
     }

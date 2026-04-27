@@ -43,7 +43,7 @@ class PrestamoControlador {
             res.status(201).json({ id, mensaje: 'Préstamo creado correctamente' });
         } catch (err) {
             console.error('Error crearPrestamo:', err);
-            res.status(500).json({ error: err.message });
+            res.status(400).json({ error: err.message }); // Cambiado a 400 para errores de validación
         }
     }
 
