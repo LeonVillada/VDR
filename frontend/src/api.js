@@ -111,5 +111,19 @@ export const fondosEspecificosApi = {
     },
 };
 
+export const eventosApi = {
+    getAll:           ()         => api.get('/eventos'),
+    getById:          (id)       => api.get(`/eventos/${id}`),
+    getStats:         ()         => api.get('/eventos/estadisticas'),
+    create:           (data)     => api.post('/eventos', data),
+    update:           (id, data) => api.put(`/eventos/${id}`, data),
+    delete:           (id)       => api.delete(`/eventos/${id}`),
+    registrarRecaudo: (id, data) => api.post(`/eventos/${id}/recaudos`, data),
+    registrarRecaudosMasivo: (id, data) => api.post(`/eventos/${id}/recaudos-masivo`, data),
+    eliminarRecaudo:  (id)       => api.delete(`/eventos/recaudos/${id}`),
+    registrarGasto:   (id, data) => api.post(`/eventos/${id}/gastos`, data),
+    eliminarGasto:    (id)       => api.delete(`/eventos/gastos/${id}`),
+};
+
 export default api;
 

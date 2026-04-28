@@ -24,6 +24,7 @@ const bancoRoutes        = require("./vista/BancoVista");
 const GastosControlador = require('./controlador/GastosControlador');
 const fondosControlador = require('./controlador/FondosControlador');
 const fondosEspecificosControlador = require('./controlador/FondosEspecificosControlador');
+const eventosControlador = require('./controlador/EventosControlador');
 
 // Definición de Rutas (Endpoints)
 app.use("/api/personas",      personasRoutes);
@@ -35,6 +36,7 @@ app.use("/api/banco",         bancoRoutes);
 app.use("/api/fondos",         fondosControlador);
 app.use("/api/fondos-especificos", fondosEspecificosControlador);
 app.use('/api/gastos', GastosControlador);
+app.use('/api/eventos', eventosControlador);
 
 // Puerto
 const PORT = process.env.PORT || 2014;

@@ -12,7 +12,8 @@ import {
   X,
   Zap,
   Building2,
-  HandCoins
+  HandCoins,
+  CalendarDays
 } from 'lucide-react';
 
 import Dashboard    from './pages/Dashboard';
@@ -25,6 +26,7 @@ import Prestamos    from './pages/Prestamos';
 import Gastos        from './pages/Gastos';
 import Fondos        from './pages/Fondos';
 import FondosEspecificos from './pages/FondosEspecificos';
+import Eventos from './pages/Eventos';
 
 const SidebarItem = ({ to, icon: Icon, label, onClick }) => {
   const location = useLocation();
@@ -90,6 +92,7 @@ function App() {
             <SidebarItem to="/gastos" icon={CreditCard} label="Gastos" onClick={closeSidebar} />
             <SidebarItem to="/fondos" icon={CreditCard} label="Fondos" onClick={closeSidebar} />
             <SidebarItem to="/fondos-especificos" icon={CreditCard} label="Fondos Específicos" onClick={closeSidebar} />
+            <SidebarItem to="/eventos" icon={CalendarDays} label="Eventos" onClick={closeSidebar} />
           </nav>
         </aside>
 
@@ -106,6 +109,7 @@ function App() {
               <Route path="/gastos" element={<Gastos />} />
               <Route path="/fondos" element={<Fondos />} />
               <Route path="/fondos-especificos" element={<FondosEspecificos />} />
+              <Route path="/eventos" element={<Eventos />} />
             </Routes>
           </div>
 
