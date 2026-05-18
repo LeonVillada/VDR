@@ -15,7 +15,27 @@ class BancoModelo {
      */
     static async obtenerFondoGlobal() {
         // 1. Cuotas quincenales (Recaudo total histórico)
-        const [[cuotas]] = await conexion.query(`SELECT COALESCE(SUM(monto), 0) AS total FROM pagos`);
+        const [[cuotas]] = await conexion.query(`SELECT COALESCE(SUM(monto), 0) AS total FROM pagos WHERE tipo_pago = 'cuota' OR tipo_pago IS NULL`);
+        
+        // 1.5 Penalizaciones (Recaudo de multas)
+        const [[penalizaciones]] = await conexion.query(`SELECT COALESCE(SUM(monto), 0) AS total FROM pagos WHERE tipo_pago = 'penalizacion'`);
+
+        // 1.7 Penalizaciones Pendientes (calculadas dinámicamente)
+        const [personasActivas] = await conexion.query('SELECT * FROM personas WHERE estado = "activo"');
+        const [pagosGlobales] = await conexion.query('SELECT * FROM pagos');
+        const { calcularEstado } = require('../logic/cuotasLogic');
+        
+        let penalizacionesPendientesMonto = 0;
+        let penalizacionesPendientesCount = 0;
+        
+        for (const p of personasActivas) {
+            const pagosPersona = pagosGlobales.filter(pago => pago.persona_id === p.id);
+            const estado = calcularEstado(p, pagosPersona);
+            if (estado.penalizacion_sugerida > 0) {
+                penalizacionesPendientesMonto += estado.penalizacion_sugerida;
+                penalizacionesPendientesCount += 1;
+            }
+        }
 
         // 2. Alcantarilla (Recaudo total - Premios repartidos)
         const [[alcantarillaRecaudo]] = await conexion.query(`SELECT COALESCE(SUM(monto_pagado), 0) AS total FROM alcantarilla_ventas`);
@@ -61,7 +81,7 @@ class BancoModelo {
 
         // Cálculo de Saldos Líquidos (Efectivo que hay en caja)
         // 1 = Cuotas, 2 = Alcantarilla, 3 = Ganancias
-        const fuenteCuotas      = Number(cuotas.total) - (mapaPrestado[1] || 0) - (mapaGastos[1] || 0);
+        const fuenteCuotas      = Number(cuotas.total) + Number(penalizaciones.total) - (mapaPrestado[1] || 0) - (mapaGastos[1] || 0);
         const fuenteAlcantarilla = recaudoNetoAlcantarilla - (mapaPrestado[2] || 0) - (mapaGastos[2] || 0);
         const fuenteIntereses    = Number(intereses.total) - (mapaPrestado[3] || 0) - (mapaGastos[3] || 0);
 
@@ -102,7 +122,10 @@ class BancoModelo {
             fuentes: {
                 cuotas:            fuenteCuotas,
                 alcantarilla:      fuenteAlcantarilla,
-                intereses_prestamos: fuenteIntereses
+                intereses_prestamos: fuenteIntereses,
+                penalizaciones_total: Number(penalizaciones.total),
+                penalizaciones_pendientes_monto: penalizacionesPendientesMonto,
+                penalizaciones_pendientes_count: penalizacionesPendientesCount
             },
             metas:                 metasConMonto,
             deuda_total_pendiente: Number(deuda.total_deuda),
@@ -117,7 +140,9 @@ class BancoModelo {
      */
     static async obtenerHistoricoFondos() {
         const query = `
-            (SELECT 'ingreso_cuota' as tipo, monto as valor, fecha as fecha, 1 as fondo_id FROM pagos)
+            (SELECT 'ingreso_cuota' as tipo, monto as valor, fecha as fecha, 1 as fondo_id FROM pagos WHERE tipo_pago = 'cuota' OR tipo_pago IS NULL)
+            UNION ALL
+            (SELECT 'ingreso_penalizacion', monto, fecha, 1 FROM pagos WHERE tipo_pago = 'penalizacion')
             UNION ALL
             (SELECT 'ingreso_alcantarilla', monto_pagado, DATE(fecha_registro), 2 FROM alcantarilla_ventas)
             UNION ALL
@@ -139,18 +164,23 @@ class BancoModelo {
         let balanceCuotas = 0;
         let balanceAlcantarilla = 0;
         let balanceGanancias = 0;
+        let balancePenalizaciones = 0;
 
         movimientos.forEach(m => {
             const mes = m.fecha ? new Date(m.fecha).toISOString().substring(0, 7) : 'Sin Fecha';
             
             const v = Number(m.valor);
-            if (m.fondo_id === 1) balanceCuotas += v;
+            if (m.fondo_id === 1) {
+                balanceCuotas += v;
+                if (m.tipo === 'ingreso_penalizacion') balancePenalizaciones += v;
+            }
             else if (m.fondo_id === 2) balanceAlcantarilla += v;
             else if (m.fondo_id === 3) balanceGanancias += v;
 
             historialPorMes[mes] = {
                 mes,
                 cuotas: balanceCuotas,
+                penalizaciones: balancePenalizaciones,
                 alcantarilla: balanceAlcantarilla,
                 ganancias: balanceGanancias,
                 total: balanceCuotas + balanceAlcantarilla + balanceGanancias
@@ -167,12 +197,14 @@ class BancoModelo {
         const { calcularEstado } = require('../logic/cuotasLogic');
 
         // 1. Deudores de Cuotas (Personas con mora calculado dinámicamente)
-        const [personasActivas] = await conexion.query('SELECT * FROM personas WHERE estado = "activo"');
-        const [pagosGlobales] = await conexion.query('SELECT * FROM pagos');
+        // personasActivas y pagosGlobales ya se consultaron arriba si estamos en la misma petición o podemos volver a consultarlos.
+        // Pero para no causar colisiones de variables si se usa en otros lados, volvemos a declarar o reusamos.
+        const [personasActivasRes] = await conexion.query('SELECT * FROM personas WHERE estado = "activo"');
+        const [pagosGlobalesRes] = await conexion.query('SELECT * FROM pagos');
         
         let deudoresCuotas = [];
-        for (const p of personasActivas) {
-            const pagosPersona = pagosGlobales.filter(pago => pago.persona_id === p.id);
+        for (const p of personasActivasRes) {
+            const pagosPersona = pagosGlobalesRes.filter(pago => pago.persona_id === p.id);
             const estado = calcularEstado(p, pagosPersona);
             if (estado.es_moroso) {
                 deudoresCuotas.push({
@@ -180,6 +212,7 @@ class BancoModelo {
                     quincenas_pendientes: estado.quincenas_en_mora.length,
                     quincenas_detalle: estado.quincenas_en_mora.join(', '),
                     cuota: p.cuota,
+                    penalizacion: estado.penalizacion_sugerida,
                     monto_deuda: Math.max(estado.total_deuda, 0)
                 });
             }
@@ -236,7 +269,8 @@ class BancoModelo {
         }
 
         // 5. Consolidado por fondo (Resumen histórico)
-        const [[cuotasTotal]] = await conexion.query(`SELECT COALESCE(SUM(monto), 0) AS subtotal FROM pagos`);
+        const [[cuotasTotal]] = await conexion.query(`SELECT COALESCE(SUM(monto), 0) AS subtotal FROM pagos WHERE tipo_pago = 'cuota' OR tipo_pago IS NULL`);
+        const [[penalizacionesTotal]] = await conexion.query(`SELECT COALESCE(SUM(monto), 0) AS subtotal FROM pagos WHERE tipo_pago = 'penalizacion'`);
         const [[alcantarillaTotal]] = await conexion.query(`SELECT COALESCE(SUM(monto_pagado), 0) AS subtotal FROM alcantarilla_ventas`);
         const [[alcantarillaPremios]] = await conexion.query(`SELECT COALESCE(SUM(costo_premio), 0) AS subtotal FROM alcantarillas`);
         const [[interesTotal]] = await conexion.query(`SELECT COALESCE(SUM(interes_pagado), 0) AS subtotal FROM prestamo_abonos`);
@@ -248,6 +282,7 @@ class BancoModelo {
             deudores_alcantarilla: deudoresAlcantarilla,
             totales_historicos: {
                 cuotas: Number(cuotasTotal.subtotal),
+                penalizaciones: Number(penalizacionesTotal.subtotal),
                 alcantarilla: Number(alcantarillaTotal.subtotal),
                 alcantarilla_premios: Number(alcantarillaPremios.subtotal),
                 ganancias: Number(interesTotal.subtotal)

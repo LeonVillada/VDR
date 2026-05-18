@@ -14,7 +14,7 @@ const COLORES_METAS   = ['#10b981','#22d3ee','#a78bfa','#f472b6','#fb923c','#34d
 
 const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`;
 
-const FuenteCard = ({ label, monto, total, icon: Icon, color }) => {
+const FuenteCard = ({ label, monto, total, icon: Icon, color, extraText }) => {
     const pct = total > 0 ? ((monto / total) * 100).toFixed(1) : 0;
     return (
         <div className="card" style={{ padding: '1.5rem', borderTop: `3px solid ${color}` }}>
@@ -30,7 +30,10 @@ const FuenteCard = ({ label, monto, total, icon: Icon, color }) => {
             <div style={{ background: 'rgba(255,255,255,0.05)', height: '6px', borderRadius: '20px', overflow: 'hidden' }}>
                 <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 1s ease-out' }} />
             </div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{pct}% del fondo total</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>{pct}% del fondo total</p>
+                {extraText && <p style={{ fontSize: '0.75rem', fontWeight: 700, margin: 0, color: 'var(--danger)' }}>{extraText}</p>}
+            </div>
         </div>
     );
 };
@@ -154,7 +157,21 @@ const BancoGeneral = () => {
 
             {/* Fuentes de ingreso */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-                <FuenteCard label="Saldo Líquido Cuotas"  monto={fuentes.cuotas}               total={fondo_total} icon={Wallet}     color="#10b981" />
+                <FuenteCard 
+                    label="Saldo Líquido Cuotas"  
+                    monto={fuentes.cuotas}               
+                    total={fondo_total} 
+                    icon={Wallet}     
+                    color="#10b981" 
+                    extraText={
+                        (fuentes.penalizaciones_total > 0 || fuentes.penalizaciones_pendientes_monto > 0) ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', fontSize: '0.65rem', textAlign: 'right', fontWeight: 'bold' }}>
+                                <span style={{ color: 'var(--danger)' }}>Multas Cobradas: {fmt(fuentes.penalizaciones_total)}</span>
+                                <span style={{ color: 'var(--warning)' }}>Multas Por Cobrar: {fmt(fuentes.penalizaciones_pendientes_monto)}</span>
+                            </div>
+                        ) : null
+                    }
+                />
                 <FuenteCard label="Saldo Líquido Alcantarilla" monto={fuentes.alcantarilla}      total={fondo_total} icon={CreditCard} color="#f59e0b" />
                 <FuenteCard label="Ganancias (Intereses)"  monto={fuentes.intereses_prestamos}   total={fondo_total} icon={HandCoins}  color="#6366f1" />
             </div>

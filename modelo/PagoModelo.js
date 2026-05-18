@@ -2,10 +2,10 @@ const conexionPromise = require('../database/conexion');
 
 class PagoModelo {
     static async crear(datos) {
-        const { persona_id, fecha, monto, quincena } = datos;
+        const { persona_id, fecha, monto, quincena, tipo_pago } = datos;
         const [result] = await conexionPromise.query(
-            'INSERT INTO pagos (persona_id, fecha, monto, quincena) VALUES (?, ?, ?, ?)',
-            [persona_id, fecha, monto, quincena]
+            'INSERT INTO pagos (persona_id, fecha, monto, quincena, tipo_pago) VALUES (?, ?, ?, ?, ?)',
+            [persona_id, fecha, monto, quincena, tipo_pago || 'cuota']
         );
         return result.insertId;
     }
@@ -67,15 +67,15 @@ class PagoModelo {
     }
 
     static async crearLote(pagos) {
-        // pagos: [{ persona_id, fecha, monto, quincena }, ...]
+        // pagos: [{ persona_id, fecha, monto, quincena, tipo_pago }, ...]
         if (!pagos || pagos.length === 0) return 0;
         
         const connection = await conexionPromise.getConnection();
         try {
             await connection.beginTransaction();
-            const query = 'INSERT INTO pagos (persona_id, fecha, monto, quincena) VALUES (?, ?, ?, ?)';
+            const query = 'INSERT INTO pagos (persona_id, fecha, monto, quincena, tipo_pago) VALUES (?, ?, ?, ?, ?)';
             for (const pago of pagos) {
-                await connection.query(query, [pago.persona_id, pago.fecha, pago.monto, pago.quincena]);
+                await connection.query(query, [pago.persona_id, pago.fecha, pago.monto, pago.quincena, pago.tipo_pago || 'cuota']);
             }
             await connection.commit();
             return pagos.length;

@@ -206,6 +206,23 @@ const Dashboard = () => {
                             ))}
                         </div>
                     </div>
+                    
+                    <div style={{ marginTop: '1rem', padding: '0.6rem', background: 'rgba(220, 38, 38, 0.05)', borderRadius: '8px', borderLeft: '3px solid var(--danger)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                <span style={{ color: 'var(--danger)', fontWeight: 700 }}>PENALIZACIONES COBRADAS</span>
+                                <span style={{ fontWeight: 800, color: 'var(--danger)' }}>{fmt(bancoData.fuentes.penalizaciones_total)}</span>
+                            </div>
+                            <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Recaudo por multas de mora (incluido en caja)</p>
+                        </div>
+                        <div style={{ borderTop: '1px solid rgba(220, 38, 38, 0.15)', paddingTop: '0.4rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                <span style={{ color: 'var(--warning)', fontWeight: 700 }}>PENALIZACIONES POR COBRAR</span>
+                                <span style={{ fontWeight: 800, color: 'var(--warning)' }}>{fmt(bancoData.fuentes.penalizaciones_pendientes_monto)}</span>
+                            </div>
+                            <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Total de multas activas por cobrar ({bancoData.fuentes.penalizaciones_pendientes_count} integrantes)</p>
+                        </div>
+                    </div>
                 </FundPanel>
 
                 {/* FONDO ALCANTARILLA */}

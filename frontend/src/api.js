@@ -19,6 +19,7 @@ export const pagosApi = {
     create: (data) => api.post('/pagos', data),
     createGlobal: (data) => api.post('/pagos/global', data),
     createLote: (data) => api.post('/pagos/lote', data),
+    ponerAlDia: (personaId) => api.post(`/pagos/poner-al-dia/${personaId}`),
     delete: (id) => api.delete(`/pagos/${id}`),
     getStats: () => api.get('/pagos/estadisticas')
 };

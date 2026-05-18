@@ -1,5 +1,6 @@
 const PagoModelo = require('../modelo/PagoModelo');
 const PersonaModelo = require('../modelo/PersonasModelo');
+const { calcularEstado } = require('../logic/cuotasLogic');
 
 const obtenerPagos = async (req, res) => {
     try {
@@ -91,6 +92,54 @@ const registrarLote = async (req, res) => {
     }
 };
 
+const ponerAlDia = async (req, res) => {
+    try {
+        const { persona_id } = req.params;
+        const persona = await PersonaModelo.obtenerPorId(persona_id);
+        if (!persona) return res.status(404).json({ error: "Persona no encontrada" });
+
+        const pagosPrevios = await PagoModelo.obtenerPorPersona(persona_id);
+        const estado = calcularEstado(persona, pagosPrevios);
+
+        if (!estado.es_moroso || estado.quincenas_en_mora.length < 2) {
+            return res.status(400).json({ error: "El integrante no debe 2 o más cuotas" });
+        }
+
+        const fecha = new Date().toISOString().split('T')[0];
+        const nuevosPagos = [];
+
+        // 1. Añadir pago por cada cuota en mora
+        for (const q of estado.quincenas_en_mora) {
+            nuevosPagos.push({
+                persona_id,
+                fecha,
+                monto: persona.cuota,
+                quincena: q,
+                tipo_pago: 'cuota'
+            });
+        }
+
+        // 2. Añadir pago por penalización
+        if (estado.penalizacion_sugerida > 0) {
+            nuevosPagos.push({
+                persona_id,
+                fecha,
+                monto: estado.penalizacion_sugerida,
+                quincena: 'Penalización Mora',
+                tipo_pago: 'penalizacion'
+            });
+        }
+
+        const total = await PagoModelo.crearLote(nuevosPagos);
+        res.status(201).json({ 
+            mensaje: `El integrante fue puesto al día exitosamente (${total} registros creados)`, 
+            total 
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     obtenerPagos,
     obtenerPagosPorPersona,
@@ -98,5 +147,6 @@ module.exports = {
     eliminarPago,
     obtenerEstadisticas,
     registrarPagoGlobal,
-    registrarLote
+    registrarLote,
+    ponerAlDia
 };

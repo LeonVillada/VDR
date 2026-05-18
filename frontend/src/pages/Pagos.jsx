@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CreditCard, Search, Plus, Trash2, Download, FileText, X, AlertCircle, Save, UserPlus, CheckSquare, Square } from 'lucide-react';
-import { pagosApi, personasApi } from '../api';
+import { pagosApi, personasApi, bancoApi } from '../api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -33,18 +33,22 @@ const Pagos = () => {
         "Q1 Octubre", "Q2 Octubre", "Q1 Noviembre", "Q2 Noviembre", "Q1 Diciembre", "Q2 Diciembre"
     ];
 
+    const [deudores, setDeudores] = useState([]);
+
     useEffect(() => {
         fetchData();
     }, []);
 
     const fetchData = async () => {
         try {
-            const [pagosRes, personasRes] = await Promise.all([
+            const [pagosRes, personasRes, resumenRes] = await Promise.all([
                 pagosApi.getAll(),
-                personasApi.getAll()
+                personasApi.getAll(),
+                bancoApi.getResumenMaestro()
             ]);
             setPagos(pagosRes.data);
             setPersonas(personasRes.data.sort((a, b) => a.nombre.localeCompare(b.nombre)));
+            setDeudores(resumenRes.data.deudores_cuotas || []);
         } catch (err) { console.error(err); }
         setLoading(false);
     };
@@ -110,6 +114,19 @@ const Pagos = () => {
         } catch (err) { console.error(err); }
     };
 
+    const handlePonerAlDia = async (personaId, nombre) => {
+        if (window.confirm(`¿Seguro que desea poner al día a ${nombre}? Se crearán los pagos de las cuotas atrasadas y la penalización automáticamente.`)) {
+            try {
+                const res = await pagosApi.ponerAlDia(personaId);
+                alert(res.data.mensaje);
+                fetchData();
+            } catch (err) {
+                console.error(err);
+                alert(err.response?.data?.error || "Error al poner al día");
+            }
+        }
+    };
+
     const handleDelete = async (id) => {
         if (window.confirm('¿Eliminar este registro de pago?')) {
             try {
@@ -128,6 +145,8 @@ const Pagos = () => {
         if (endDate && pagoDate > endDate) matchesDate = false;
         return matchesPersona && matchesQuincena && matchesDate;
     });
+
+    const morososCriticos = deudores.filter(d => parseInt(d.quincenas_pendientes) >= 2);
 
     const generatePDF = async () => {
         const doc = new jsPDF();
@@ -192,22 +211,66 @@ const Pagos = () => {
             }
         });
 
+        // --- SECCIÓN DE DEUDORES (SOLO SI APLICA) ---
+        const personaNombre = selectedPersona ? personas.find(p => p.id === parseInt(selectedPersona))?.nombre : null;
+        const filteredDeudores = personaNombre 
+            ? deudores.filter(d => d.nombre.toUpperCase() === personaNombre.toUpperCase())
+            : deudores;
+
+        if (filteredDeudores.length > 0) {
+            let nextY = doc.lastAutoTable.finalY + 15;
+            if (nextY > H - 60) {
+                doc.addPage();
+                drawAesthetics(doc);
+                nextY = 50;
+            }
+
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(220, 38, 38); // Rojo para deudores
+            doc.text('RESUMEN DE MORA Y QUINCENAS PENDIENTES', margin, nextY);
+            
+            autoTable(doc, {
+                startY: nextY + 5,
+                head: [["INTEGRANTE", "QUINCENAS EN MORA", "PENALIZACIÓN", "TOTAL DEUDA"]],
+                body: filteredDeudores.map(d => [
+                    d.nombre.toUpperCase(),
+                    d.quincenas_detalle || `${d.quincenas_pendientes} Qs`,
+                    `$${(d.penalizacion || 0).toLocaleString()}`,
+                    `$${d.monto_deuda.toLocaleString()}`
+                ]),
+                theme: 'striped',
+                headStyles: { fillColor: [220, 38, 38], textColor: cWhite, fontStyle: 'bold' },
+                styles: { fontSize: 8 },
+                columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right', fontStyle: 'bold' } }
+            });
+        }
+
         // Totales al final
         const recolectado = filteredPagos.reduce((s, p) => s + Number(p.monto), 0);
+        const deudaTotal = filteredDeudores.reduce((s, d) => s + Number(d.monto_deuda), 0);
         let fY = doc.lastAutoTable.finalY + 10;
         
-        if (fY > H - 30) {
+        if (fY > H - 40) {
             doc.addPage();
             drawAesthetics(doc);
             fY = 50;
         }
 
-        doc.setFontSize(14);
+        doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...cDark);
-        doc.text('TOTAL RECAUDADO LOTE IMPRESO', margin, fY);
+        doc.text('TOTAL RECAUDADO EN ESTE LOTE', margin, fY);
         doc.setTextColor(...cGreen);
         doc.text(`$${recolectado.toLocaleString()}`, W - margin, fY, { align: 'right' });
+
+        if (deudaTotal > 0) {
+            fY += 8;
+            doc.setTextColor(...cDark);
+            doc.text('SALDO PENDIENTE POR COBRAR (MORA)', margin, fY);
+            doc.setTextColor(220, 38, 38);
+            doc.text(`$${deudaTotal.toLocaleString()}`, W - margin, fY, { align: 'right' });
+        }
         
         doc.setDrawColor(...cGreen);
         doc.setLineWidth(0.5);
@@ -275,6 +338,44 @@ const Pagos = () => {
                     </div>
                  </div>
             </div>
+
+            {/* Nueva Sección: Integrantes en Mora Critica (>= 2 Cuotas) */}
+            {morososCriticos.length > 0 && (
+                <div className="card" style={{ marginBottom: '2rem', border: '1px solid rgba(220, 38, 38, 0.3)' }}>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ef4444', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <AlertCircle size={20} /> Integrantes con Penalización Activa
+                    </h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Integrante</th>
+                                <th>Quincenas Pendientes</th>
+                                <th>Total Deuda (Incl. Penalización)</th>
+                                <th>Acción rápida</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {morososCriticos.map((m, idx) => (
+                                <tr key={idx} style={{ background: 'rgba(239, 68, 68, 0.05)' }}>
+                                    <td style={{ fontWeight: 600 }}>{m.nombre}</td>
+                                    <td>{m.quincenas_detalle}</td>
+                                    <td style={{ fontWeight: 700, color: 'var(--danger)' }}>${m.monto_deuda.toLocaleString()}</td>
+                                    <td>
+                                        <button 
+                                            className="btn" 
+                                            style={{ background: 'var(--success)', color: 'white', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                                            onClick={() => handlePonerAlDia(personas.find(p => p.nombre === m.nombre)?.id, m.nombre)}
+                                        >
+                                            <CheckSquare size={16} style={{ marginRight: '0.5rem' }} />
+                                            Poner al día
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
             <div className="card">
                 <table>
