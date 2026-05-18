@@ -112,16 +112,15 @@ function calcularEstado(persona, pagos) {
         }
     });
 
-    // 6. Cálculo de Vencidas tradicionales (para backwards compatibility si se usa en otros lados)
+    // 6. Cálculo de Penalización basado en la Mora Real
     const quincenasVencidasCount = calcularQuincenasVencidas(hoy, fechaIngreso);
-    const pendientes = quincenasVencidasCount - quincenasCubiertas;
-    let penalizacion = (pendientes >= 2) ? 5000 : 0;
+    let penalizacion = (quincenasEnMora.length >= 2) ? 5000 : 0;
 
     // EL total deuda ahora se basa en las que realmente están en mora + penalización
     const totalDeudaReal = (quincenasEnMora.length * cuotaFija) + penalizacion;
 
     return {
-        quincenas_pendientes: pendientes > 0 ? pendientes : 0,
+        quincenas_pendientes: quincenasEnMora.length,
         penalizacion_sugerida: penalizacion,
         total_deuda: totalDeudaReal,
         quincenas_pagadas: quincenasCubiertas,

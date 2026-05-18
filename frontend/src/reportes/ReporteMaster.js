@@ -102,10 +102,11 @@ export const generateMasterPDF = async (data, banco) => {
         head: [['FONDO', 'DESGLOSE DE SALDOS', 'CANTIDAD', 'DISPONIBLE EN CAJA']],
         body: [
             [
-                { content: 'CUOTAS QUINCENALES', rowSpan: 3, styles: { valign: 'middle', fontStyle: 'bold' } },
+                { content: 'CUOTAS QUINCENALES', rowSpan: 4, styles: { valign: 'middle', fontStyle: 'bold' } },
                 'Total Recaudado Histórico', fmt(data.totales_historicos.cuotas), 
-                { content: fmt(banco.fuentes.cuotas), rowSpan: 3, styles: { valign: 'middle', fontStyle: 'bold', halign: 'right' } }
+                { content: fmt(banco.fuentes.cuotas), rowSpan: 4, styles: { valign: 'middle', fontStyle: 'bold', halign: 'right' } }
             ],
+            ['Penalizaciones Recaudadas', fmt(data.totales_historicos.penalizaciones), ''],
             ['Total Gastos Deducidos', `-${fmt(gastosCuotas)}`, ''],
             ['Capital Prestado', `-${fmt(prestadoCuotas)}`, ''],
             
@@ -152,10 +153,11 @@ export const generateMasterPDF = async (data, banco) => {
 
         autoTable(doc, {
             startY: y,
-            head: [['NOMBRE INTEGRANTE', 'QUINCENAS PENDIENTES', 'TOTAL DEUDA']],
+            head: [['NOMBRE INTEGRANTE', 'QUINCENAS PENDIENTES', 'PENALIZACIÓN', 'TOTAL DEUDA']],
             body: data.deudores_cuotas.map(d => [
                 d.nombre.toUpperCase(), 
                 d.quincenas_detalle ? d.quincenas_detalle.toUpperCase() : `${d.quincenas_pendientes} Qs`, 
+                fmt(d.penalizacion),
                 fmt(d.monto_deuda)
             ]),
             theme: 'striped',
