@@ -8,7 +8,14 @@ class AlcantarillaModelo {
         const [result] = await conexion.query(
             `INSERT INTO alcantarillas (nombre, fecha, precio_boleta, costo_premio, tope_por_persona, comprobante_premio)
              VALUES (?, ?, ?, ?, ?, ?)`,
-            [nombre, fecha, precio_boleta || 3000, costo_premio || 0, tope_por_persona || 10, comprobante_premio || null]
+            [
+                nombre,
+                fecha,
+                Number(precio_boleta) || 3000,   // flexible por evento
+                Number(costo_premio)  || 0,
+                Number(tope_por_persona) || 15,   // default 15 boletas
+                comprobante_premio || null
+            ]
         );
         return result.insertId;
     }
@@ -18,7 +25,8 @@ class AlcantarillaModelo {
             SELECT a.*,
                 COALESCE(SUM(v.unidades_vendidas), 0) AS total_unidades,
                 COALESCE(SUM(v.monto_pagado), 0)      AS total_recaudado,
-                COUNT(DISTINCT v.persona_id)           AS personas_registradas
+                COUNT(DISTINCT v.persona_id)           AS personas_registradas,
+                (SELECT COUNT(*) FROM personas p WHERE p.fecha_ingreso <= a.fecha) AS total_personas_activas
             FROM alcantarillas a
             LEFT JOIN alcantarilla_ventas v ON v.alcantarilla_id = a.id
             GROUP BY a.id
@@ -73,7 +81,7 @@ class AlcantarillaModelo {
         await conexion.query('DELETE FROM alcantarilla_ventas WHERE id = ?', [id]);
     }
 
-    // ── ESTADÍSTICAS ───────────────────────────────────────────
+    // ── ESTADÍSTICAS (usa precios dinámicos por alcantarilla) ───
     static async obtenerEstadisticas() {
         // Recaudo real de ventas
         const [ventas] = await conexion.query(`
@@ -81,7 +89,7 @@ class AlcantarillaModelo {
             FROM alcantarilla_ventas
         `);
 
-        // Premios: UNO por alcantarilla (no multiplied by personas)
+        // Premios y datos por alcantarilla
         const [premios] = await conexion.query(`
             SELECT
                 COUNT(*) AS total_alcantarillas,
@@ -89,27 +97,25 @@ class AlcantarillaModelo {
             FROM alcantarillas
         `);
 
-        // Personas activas en el sistema
-        const [personas] = await conexion.query(`SELECT COUNT(*) AS total FROM personas`);
+        // Meta esperada = SUM(precio_boleta × tope_por_persona × count(personas_activas_at_the_time)) por cada alcantarilla
+        const [metaAlcs] = await conexion.query(`
+            SELECT COALESCE(SUM(
+                (SELECT COUNT(*) FROM personas p WHERE p.fecha_ingreso <= a.fecha) * a.precio_boleta * a.tope_por_persona
+            ), 0) AS esperado
+            FROM alcantarillas a
+        `);
 
-        const BOLETAS = 10;
-        const PRECIO  = 3000;
-        const META_PP = BOLETAS * PRECIO;  // $30.000 por persona por alcantarilla
-
-        const recaudado   = Number(ventas[0].total_recaudado);
-        const premioTotal = Number(premios[0].total_premios);
-        const numAlc      = Number(premios[0].total_alcantarillas);
-        const numPersonas = Number(personas[0].total);
-
-        // Proyección: si todos pagan en todas las alcantarillas activas
-        const esperado = numPersonas * META_PP * numAlc;
+        const recaudado      = Number(ventas[0].total_recaudado);
+        const premioTotal    = Number(premios[0].total_premios);
+        const numAlc         = Number(premios[0].total_alcantarillas);
+        const esperado       = Number(metaAlcs[0].esperado);
 
         return {
             total_alcantarillas: numAlc,
             total_recaudado:     recaudado,
             total_premios:       premioTotal,
             ganancia_neta:       recaudado - premioTotal,
-            ganancia_proyectada: esperado  - premioTotal  // 450.000 - 100.000 = 350.000
+            ganancia_proyectada: esperado  - premioTotal
         };
     }
 }

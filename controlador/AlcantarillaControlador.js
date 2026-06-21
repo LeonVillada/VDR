@@ -16,9 +16,9 @@ const crearAlcantarilla = async (req, res) => {
         if (req.file) datos.comprobante_premio = req.file.filename;
 
         // Convertir strings numéricos de form-data
-        if (datos.precio_boleta) datos.precio_boleta = Number(datos.precio_boleta);
-        if (datos.costo_premio) datos.costo_premio = Number(datos.costo_premio);
-        if (datos.tope_por_persona) datos.tope_por_persona = Number(datos.tope_por_persona);
+        if (datos.precio_boleta)    datos.precio_boleta    = Number(datos.precio_boleta);
+        if (datos.costo_premio)     datos.costo_premio     = Number(datos.costo_premio);
+        if (datos.tope_por_persona) datos.tope_por_persona = Number(datos.tope_por_persona) || 15;
 
         const id = await AlcantarillaModelo.crear(datos);
         res.status(201).json({ mensaje: 'Alcantarilla creada', id });
@@ -74,21 +74,31 @@ const obtenerVentas = async (req, res) => {
 
 const registrarVenta = async (req, res) => {
     try {
-        const { alcantarilla_id, persona_id, unidades_vendidas } = req.body;
+        const { alcantarilla_id, persona_id, monto_pagado, unidades_vendidas } = req.body;
 
-        // Validar tope
+        // Validar que exista la alcantarilla
         const alcantarilla = await AlcantarillaModelo.obtenerPorId(alcantarilla_id);
         if (!alcantarilla) return res.status(404).json({ error: 'Alcantarilla no encontrada' });
 
-        if (unidades_vendidas > alcantarilla.tope_por_persona) {
-            return res.status(400).json({
-                error: `La cantidad máxima permitida es ${alcantarilla.tope_por_persona} unidades por persona.`
-            });
-        }
+        // monto_pagado es el valor real ingresado; si no viene, calcular desde unidades
+        const montoPagadoFinal = monto_pagado !== undefined
+            ? Number(monto_pagado)
+            : Number(unidades_vendidas || 0) * Number(alcantarilla.precio_boleta);
 
-        const monto_pagado = unidades_vendidas * alcantarilla.precio_boleta;
-        await AlcantarillaModelo.registrarVenta({ alcantarilla_id, persona_id, unidades_vendidas, monto_pagado });
-        res.status(201).json({ mensaje: 'Venta registrada', monto_pagado });
+        // Boletas estimadas (para registrar en unidades_vendidas)
+        const unidadesFinales = unidades_vendidas !== undefined
+            ? Number(unidades_vendidas)
+            : (Number(alcantarilla.precio_boleta) > 0
+                ? Math.round(montoPagadoFinal / Number(alcantarilla.precio_boleta))
+                : 0);
+
+        await AlcantarillaModelo.registrarVenta({
+            alcantarilla_id,
+            persona_id,
+            unidades_vendidas: unidadesFinales,
+            monto_pagado:      montoPagadoFinal
+        });
+        res.status(201).json({ mensaje: 'Venta registrada', monto_pagado: montoPagadoFinal });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

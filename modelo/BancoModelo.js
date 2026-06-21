@@ -250,20 +250,28 @@ class BancoModelo {
         
         for (const alc of alcantarillasActivas) {
             const [ventas] = await conexion.query(`
-                SELECT p.nombre, COALESCE(v.unidades_vendidas, 0) as vendidas, ? as tope
+                SELECT 
+                    p.nombre, 
+                    COALESCE(v.monto_pagado, 0) as pagado, 
+                    COALESCE(v.unidades_vendidas, 0) as vendidas
                 FROM personas p
                 LEFT JOIN alcantarilla_ventas v ON v.persona_id = p.id AND v.alcantarilla_id = ?
-                WHERE COALESCE(v.unidades_vendidas, 0) < ?
-            `, [alc.tope_por_persona, alc.id, alc.tope_por_persona]);
+                WHERE p.fecha_ingreso <= ? 
+                  AND COALESCE(v.monto_pagado, 0) < (? * ?)
+            `, [alc.id, alc.fecha, alc.tope_por_persona, alc.precio_boleta]);
             
             if (ventas.length > 0) {
                 deudoresAlcantarilla.push({
                     alcantarilla: alc.nombre,
-                    deudores: ventas.map(v => ({ 
-                        nombre: v.nombre, 
-                        faltantes: v.tope - v.vendidas,
-                        deuda_pesos: (v.tope - v.vendidas) * alc.precio_boleta
-                    }))
+                    deudores: ventas.map(v => {
+                        const meta = alc.tope_por_persona * alc.precio_boleta;
+                        const deuda = meta - v.pagado;
+                        return { 
+                            nombre: v.nombre, 
+                            faltantes: Math.max(0, Math.ceil(deuda / alc.precio_boleta)),
+                            deuda_pesos: deuda
+                        };
+                    })
                 });
             }
         }
