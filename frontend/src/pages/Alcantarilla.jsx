@@ -59,6 +59,33 @@ const FORM_DEFAULTS = {
     comprobante:        null
 };
 
+const parseDate = (d) => {
+    if (!d) return new Date();
+    const str = typeof d === 'string' ? d.split('T')[0] : new Date(d).toISOString().split('T')[0];
+    return new Date(`${str}T00:00:00`);
+};
+
+const getUploadUrl = (filename) => {
+    if (!filename) return null;
+
+    let cleanName = null;
+    if (typeof filename === 'string') {
+        cleanName = filename;
+    } else if (filename && typeof filename === 'object') {
+        if (Array.isArray(filename.data)) {
+            cleanName = filename.data.reduce((acc, byte) => acc + String.fromCharCode(byte), '');
+        } else if (filename.type === 'Buffer' && Array.isArray(filename.data)) {
+            cleanName = filename.data.reduce((acc, byte) => acc + String.fromCharCode(byte), '');
+        }
+    }
+
+    if (!cleanName) return null;
+
+    const normalized = String(cleanName).replace(/^\/+/, '').replace(/^uploads\//, '');
+    const baseUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:2014`;
+    return `${baseUrl}/uploads/${normalized}`;
+};
+
 export default function Alcantarilla() {
     const [alcantarillas, setAlcantarillas] = useState([]);
     const [personas, setPersonas]           = useState([]);
@@ -71,6 +98,37 @@ export default function Alcantarilla() {
     const [formAlc, setFormAlc]             = useState(FORM_DEFAULTS);
     const [formVenta, setFormVenta]         = useState({ persona_id: '', monto_pagado: '' });
     const [error, setError]                 = useState('');
+    const [selectedPersonaIds, setSelectedPersonaIds] = useState([]);
+    const [imagenExpandida, setImagenExpandida] = useState(null);
+
+    const personasFiltradas = formAlc.fecha 
+        ? personas.filter(p => parseDate(p.fecha_ingreso) <= parseDate(formAlc.fecha))
+        : [];
+
+    useEffect(() => {
+        if (formAlc.fecha && personas.length > 0) {
+            const activeIds = personas
+                .filter(p => parseDate(p.fecha_ingreso) <= parseDate(formAlc.fecha))
+                .map(p => p.id);
+            setSelectedPersonaIds(activeIds);
+        } else {
+            setSelectedPersonaIds([]);
+        }
+    }, [formAlc.fecha, personas]);
+
+    const handleSelectAll = () => {
+        setSelectedPersonaIds(personasFiltradas.map(p => p.id));
+    };
+
+    const handleSelectNone = () => {
+        setSelectedPersonaIds([]);
+    };
+
+    const handleTogglePersona = (id) => {
+        setSelectedPersonaIds(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
 
     // ── Meta calculada del formulario en tiempo real ───────────
     const metaFormulario = Number(formAlc.precio_boleta || 0) * Number(formAlc.tope_por_persona || 0);
@@ -112,6 +170,7 @@ export default function Alcantarilla() {
             formData.append('precio_boleta',    Number(formAlc.precio_boleta)    || 3000);
             formData.append('tope_por_persona', Number(formAlc.tope_por_persona) || 15);
             formData.append('costo_premio',     Number(formAlc.costo_premio)     || 0);
+            formData.append('participante_ids', selectedPersonaIds.join(','));
             if (formAlc.comprobante) {
                 formData.append('comprobante', formAlc.comprobante);
             }
@@ -119,6 +178,7 @@ export default function Alcantarilla() {
             await alcantarillasApi.create(formData);
             setShowModal(false);
             setFormAlc(FORM_DEFAULTS);
+            setSelectedPersonaIds([]);
             cargar();
         } catch (e) { setError(e.response?.data?.error || 'Error al crear'); }
     };
@@ -203,12 +263,8 @@ export default function Alcantarilla() {
 
         drawAesthetics(doc);
 
-        const parseDate = (d) => {
-            if (!d) return new Date();
-            const str = typeof d === 'string' ? d.split('T')[0] : new Date(d).toISOString().split('T')[0];
-            return new Date(`${str}T00:00:00`);
-        };
-        const personasElegibles = personas.filter(p => parseDate(p.fecha_ingreso) <= parseDate(alc.fecha));
+        const participanteIds = alc.participante_ids ? alc.participante_ids.split(',').map(Number) : [];
+        const personasElegibles = personas.filter(p => participanteIds.includes(p.id));
         const totalRecaudado = ventas.reduce((s, v) => s + Number(v.monto_pagado), 0);
         const meta           = personasElegibles.length * metaPorIntegrante;
 
@@ -294,7 +350,7 @@ export default function Alcantarilla() {
                         Precios y boletas <b style={{ color: 'var(--primary)' }}>configurables por evento</b> · Premio variable
                     </p>
                 </div>
-                <button className="btn btn-primary" onClick={() => { setShowModal(true); setError(''); }}>
+                <button className="btn btn-primary" onClick={() => { setShowModal(true); setError(''); setSelectedPersonaIds([]); }}>
                     <Plus size={18} /> Nueva Alcantarilla
                 </button>
             </header>
@@ -342,6 +398,11 @@ export default function Alcantarilla() {
                 const pctGlobal          = totalBoletas > 0 ? Math.min((boletasVendidas / totalBoletas) * 100, 100) : 0;
                 const listosParaJugar    = ventas.filter(v => Number(v.monto_pagado) >= metaPorIntegrante).length;
 
+                const participanteIds = alc.participante_ids ? alc.participante_ids.split(',').map(Number) : [];
+                const personasElegibles = personas.filter(p => participanteIds.includes(p.id));
+                const personasAZ = [...personasElegibles].sort((a, b) => a.nombre.localeCompare(b.nombre));
+                const comprobanteUrl = getUploadUrl(alc.comprobante_premio);
+
                 return (
                     <div key={alc.id} className="card" style={{ marginBottom: '1rem', padding: 0, overflow: 'hidden' }}>
 
@@ -350,13 +411,19 @@ export default function Alcantarilla() {
                             onClick={() => toggleExpandir(alc.id)}
                             style={{ padding: '1.2rem 1.5rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                                {alc.comprobante_premio && (
-                                    <img
-                                        src={`http://${window.location.hostname}:2014/uploads/${alc.comprobante_premio}`}
-                                        style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'cover', border: '1px solid var(--glass-border)' }}
-                                        alt="Factura"
-                                    />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', position: 'relative' }}>
+                                {comprobanteUrl ? (
+                                    <div style={{ position: 'relative', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setImagenExpandida(comprobanteUrl); }}>
+                                        <img
+                                            src={comprobanteUrl}
+                                            style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'cover', border: '1px solid var(--glass-border)' }}
+                                            alt="Factura"
+                                            title="Click para ver en grande"
+                                        />
+                                        <div style={{ position: 'absolute', top: '-6px', right: '-6px', background: 'var(--primary)', color: 'white', width: '20px', height: '20px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold', opacity: 0.8 }}>🔍</div>
+                                    </div>
+                                ) : (
+                                    <div style={{ width: '50px', height: '50px', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', border: '1px dashed var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>📷</div>
                                 )}
                                 <div>
                                     <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>🎰 {alc.nombre}</div>
@@ -434,36 +501,50 @@ export default function Alcantarilla() {
                             <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--glass-border)' }}>
                                 <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '1rem' }}>
                                     <Users size={14} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
-                                    Ventas por integrante ({ventas.length} / {alc.total_personas_activas || 0})
+                                    Estado por integrante ({listosParaJugar} / {personasElegibles.length} completos)
                                 </div>
 
-                                {ventas.length === 0 ? (
-                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin registros de venta aún.</p>
+                                {personasAZ.length === 0 ? (
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No hay integrantes asignados a este evento.</p>
                                 ) : (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '0.75rem' }}>
-                                        {ventas.map(v => (
-                                            <div key={v.id} style={{
-                                                background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)',
-                                                borderRadius: '12px', padding: '0.9rem 1rem'
-                                            }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                                    <div>
-                                                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{v.persona_nombre}</span>
-                                                        <div style={{ marginTop: '2px' }}>
-                                                            <BadgePago montoPagado={Number(v.monto_pagado)} metaPorIntegrante={metaPorIntegrante} />
+                                        {personasAZ.map(p => {
+                                            const v = ventas.find(venta => venta.persona_id === p.id);
+                                            const montoPagado = v ? Number(v.monto_pagado) : 0;
+                                            const unidades = v ? v.unidades_vendidas : 0;
+
+                                            return (
+                                                <div key={p.id} style={{
+                                                    background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)',
+                                                    borderRadius: '12px', padding: '0.9rem 1rem'
+                                                }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                        <div>
+                                                            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{p.nombre}</span>
+                                                            <div style={{ marginTop: '2px' }}>
+                                                                <BadgePago montoPagado={montoPagado} metaPorIntegrante={metaPorIntegrante} />
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.9rem' }}>${montoPagado.toLocaleString()}</div>
+                                                            {v ? (
+                                                                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', padding: '2px', marginTop: '4px' }}
+                                                                    title="Eliminar venta"
+                                                                    onClick={() => handleEliminarVenta(v.id, alc.id)}>
+                                                                    <X size={14} />
+                                                                </button>
+                                                            ) : (
+                                                                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', padding: '2px', marginTop: '4px', fontSize: '0.75rem', fontWeight: 600 }}
+                                                                    onClick={(e) => { e.stopPropagation(); setShowVentaModal(alc.id); setFormVenta({ persona_id: p.id, monto_pagado: '' }); }}>
+                                                                    Registrar
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <div style={{ textAlign: 'right' }}>
-                                                        <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.9rem' }}>${Number(v.monto_pagado).toLocaleString()}</div>
-                                                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', padding: '2px', marginTop: '4px' }}
-                                                            onClick={() => handleEliminarVenta(v.id, alc.id)}>
-                                                            <X size={14} />
-                                                        </button>
-                                                    </div>
+                                                    <BarraProgreso vendidas={unidades} tope={Number(alc.tope_por_persona)} />
                                                 </div>
-                                                <BarraProgreso vendidas={v.unidades_vendidas} tope={Number(alc.tope_por_persona)} />
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -541,6 +622,39 @@ export default function Alcantarilla() {
                                 </div>
                             )}
 
+                            {/* Integrantes Participantes */}
+                            <div className="form-group">
+                                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>👥 Integrantes Participantes *</span>
+                                    <div style={{ fontSize: '0.75rem', display: 'flex', gap: '0.6rem' }}>
+                                        <button type="button" className="btn btn-ghost" style={{ padding: '2px 6px', fontSize: '0.72rem', height: 'auto' }} onClick={handleSelectAll}>Todos</button>
+                                        <button type="button" className="btn btn-ghost" style={{ padding: '2px 6px', fontSize: '0.72rem', height: 'auto', color: 'var(--danger)' }} onClick={handleSelectNone}>Ninguno</button>
+                                    </div>
+                                </label>
+                                <div style={{ 
+                                    maxHeight: '130px', 
+                                    overflowY: 'auto', 
+                                    border: '1px solid var(--glass-border)', 
+                                    borderRadius: '8px', 
+                                    padding: '0.5rem 0.8rem',
+                                    background: 'rgba(0,0,0,0.2)' 
+                                }}>
+                                    {personasFiltradas.map(p => (
+                                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '5px 0', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedPersonaIds.includes(p.id)}
+                                                onChange={() => handleTogglePersona(p.id)}
+                                            />
+                                            <span>{p.nombre}</span>
+                                        </label>
+                                    ))}
+                                    {personasFiltradas.length === 0 && (
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Introduce una fecha de evento válida.</span>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* Costo del premio */}
                             <div className="form-group">
                                 <label>🏆 Precio del Premio ($)</label>
@@ -564,6 +678,21 @@ export default function Alcantarilla() {
                 </div>
             )}
 
+            {/* ── MODAL: VER IMAGEN COMPROBANTE ── */}
+            {imagenExpandida && (
+                <div className="modal-overlay" onClick={() => setImagenExpandida(null)}>
+                    <div className="modal-content" style={{ maxWidth: '90vw', maxHeight: '90vh', padding: 0, overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', borderBottom: '1px solid var(--glass-border)', position: 'sticky', top: 0, background: 'rgba(15,23,42,0.95)', zIndex: 10 }}>
+                            <h2 style={{ fontWeight: 800, fontSize: '1.2rem' }}>📷 Comprobante del Premio</h2>
+                            <button className="btn btn-ghost" style={{ padding: '0.4rem' }} onClick={() => setImagenExpandida(null)}><X size={20} /></button>
+                        </div>
+                        <div style={{ padding: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                            <img src={imagenExpandida} style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: '12px', boxShadow: '0 0 40px rgba(16,185,129,0.2)' }} alt="Comprobante expandido" />
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ── MODAL: REGISTRAR VENTA ── */}
             {showVentaModal && (() => {
                 const alc                    = alcantarillas.find(a => a.id === showVentaModal);
@@ -574,11 +703,11 @@ export default function Alcantarilla() {
                     const str = typeof d === 'string' ? d.split('T')[0] : new Date(d).toISOString().split('T')[0];
                     return new Date(`${str}T00:00:00`);
                 };
+                const participanteIds        = alc?.participante_ids ? alc.participante_ids.split(',').map(Number) : [];
                 const personasYaRegistradas  = new Set(ventasActuales.map(v => v.persona_id));
                 const personasDisponibles    = personas.filter(p => {
                     if (personasYaRegistradas.has(p.id)) return false;
-                    if (!alc) return false;
-                    return parseDate(p.fecha_ingreso) <= parseDate(alc.fecha);
+                    return participanteIds.includes(p.id);
                 });
                 const montoPagado            = Number(formVenta.monto_pagado) || 0;
                 const esCompleto             = montoPagado >= metaPorIntegrante;

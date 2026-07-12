@@ -45,6 +45,9 @@ const GastosModelo = {
     },
 
     eliminar: async (id) => {
+        // Primero eliminar las facturas asociadas (por restricción de foreign key)
+        await db.query('DELETE FROM facturas WHERE gasto_id = ?', [id]);
+        // Luego eliminar el gasto
         await db.query('DELETE FROM gastos WHERE id = ?', [id]);
     },
 

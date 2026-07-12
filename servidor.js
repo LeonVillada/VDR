@@ -25,6 +25,7 @@ const GastosControlador = require('./controlador/GastosControlador');
 const fondosControlador = require('./controlador/FondosControlador');
 const fondosEspecificosControlador = require('./controlador/FondosEspecificosControlador');
 const eventosControlador = require('./controlador/EventosControlador');
+const ventasRoutes = require('./vista/VentasVista');
 
 // Definición de Rutas (Endpoints)
 app.use("/api/personas",      personasRoutes);
@@ -37,6 +38,7 @@ app.use("/api/fondos",         fondosControlador);
 app.use("/api/fondos-especificos", fondosEspecificosControlador);
 app.use('/api/gastos', GastosControlador);
 app.use('/api/eventos', eventosControlador);
+app.use('/api/ventas', ventasRoutes);
 
 // Puerto
 const PORT = process.env.PORT || 2014;

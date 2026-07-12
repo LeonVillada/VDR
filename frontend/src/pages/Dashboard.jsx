@@ -63,7 +63,8 @@ const Dashboard = () => {
     const FUND_COLORS = {
         cuotas: '#3b82f6',
         alcantarilla: '#10b981',
-        ganancias: '#f59e0b'
+        ganancias: '#f59e0b',
+        ventas: '#a855f7'
     };
 
     const fetchData = async () => {
@@ -157,14 +158,15 @@ const Dashboard = () => {
                                     data={[
                                         { name: 'Cuotas', value: bancoData.fuentes.cuotas, fill: FUND_COLORS.cuotas },
                                         { name: 'Alcantarilla', value: Math.max(0, bancoData.fuentes.alcantarilla), fill: FUND_COLORS.alcantarilla },
-                                        { name: 'Ganancias', value: bancoData.fuentes.intereses_prestamos, fill: FUND_COLORS.ganancias }
+                                        { name: 'Ganancias', value: bancoData.fuentes.intereses_prestamos, fill: FUND_COLORS.ganancias },
+                                        { name: 'Ventas', value: bancoData.fuentes.ventas, fill: FUND_COLORS.ventas }
                                     ]} 
                                     innerRadius={45} 
                                     outerRadius={65} 
                                     paddingAngle={5} 
                                     dataKey="value"
                                 >
-                                    {[0,1,2].map((i) => <Cell key={i} />)}
+                                    {[0,1,2,3].map((i) => <Cell key={i} />)}
                                 </Pie>
                                 <Tooltip />
                             </PieChart>
@@ -283,6 +285,47 @@ const Dashboard = () => {
                     </div>
                 </FundPanel>
 
+                {/* FONDO VENTAS */}
+                <FundPanel 
+                    title="Módulo de Ventas" 
+                    total={bancoData.ventas_detalle.total_recaudado} 
+                    usage={bancoData.ventas_detalle.total_prestado_fondos - (bancoData.ventas_detalle.total_recaudado > bancoData.ventas_detalle.total_prestado_fondos ? bancoData.ventas_detalle.total_prestado_fondos : bancoData.ventas_detalle.total_recaudado)} 
+                    expenses={bancoData.ventas_detalle.total_invertido_gastos} 
+                    final={bancoData.fuentes.ventas}
+                    icon={Banknote}
+                    color={FUND_COLORS.ventas}
+                >
+                    <div style={{ marginTop: '0.5rem', marginBottom: '1rem', display: 'flex', gap: '1rem', fontSize: '0.8rem' }}>
+                        <div style={{ flex: 1, padding: '0.6rem', background: 'rgba(168, 85, 247, 0.05)', borderRadius: '10px', textAlign: 'center' }}>
+                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.65rem' }}>Préstamos de Fondos</span>
+                            <span style={{ fontWeight: 700, color: 'var(--text)' }}>{fmt(bancoData.ventas_detalle.total_prestado_fondos)}</span>
+                        </div>
+                        <div style={{ flex: 1, padding: '0.6rem', background: 'rgba(168, 85, 247, 0.05)', borderRadius: '10px', textAlign: 'center' }}>
+                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.65rem' }}>Ganancia Neta</span>
+                            <span style={{ fontWeight: 700, color: 'var(--success)' }}>{fmt(bancoData.ventas_detalle.ganancia_neta)}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <h5 style={{ fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.8rem', opacity: 0.8 }}>DESGLOSE POR EVENTO</h5>
+                        <div style={{ maxHeight: '110px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {bancoData.ventas_detalle.por_evento.length === 0 ? <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No hay eventos</p> :
+                             bancoData.ventas_detalle.por_evento.map((ev, i) => (
+                                <div key={i} style={{ padding: '0.6rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', fontSize: '0.8rem', borderLeft: `3px solid ${ev.ganancia > 0 ? 'var(--success)' : 'var(--warning)'}` }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                                        <span>Evento #{ev.id}</span>
+                                        <span style={{ fontWeight: 700 }}>{ev.ganancia > 0 ? `+${fmt(ev.ganancia)}` : `Falta: ${fmt(ev.faltante_por_devolver)}`}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                                        <span>Prestado: {fmt(ev.prestado)}</span>
+                                        <span>Recaudado: {fmt(ev.recuperado)}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </FundPanel>
+
+
             </div>
 
             {/* EVOLUCIÓN GLOBAL */}
@@ -295,6 +338,7 @@ const Dashboard = () => {
                         <span style={{ color: FUND_COLORS.cuotas }}>● Cuotas</span>
                         <span style={{ color: FUND_COLORS.alcantarilla }}>● Alcantarilla</span>
                         <span style={{ color: FUND_COLORS.ganancias }}>● Ganancias</span>
+                        <span style={{ color: FUND_COLORS.ventas }}>● Ventas</span>
                     </div>
                 </div>
                 
@@ -315,6 +359,7 @@ const Dashboard = () => {
                                 <Area type="monotone" dataKey="cuotas" stroke={FUND_COLORS.cuotas} fill="transparent" strokeWidth={3} />
                                 <Area type="monotone" dataKey="alcantarilla" stroke={FUND_COLORS.alcantarilla} fill="transparent" strokeWidth={3} />
                                 <Area type="monotone" dataKey="ganancias" stroke={FUND_COLORS.ganancias} fill="transparent" strokeWidth={3} />
+                                <Area type="monotone" dataKey="ventas" stroke={FUND_COLORS.ventas} fill="transparent" strokeWidth={3} />
                                 <Area type="monotone" dataKey="total" stroke="var(--primary)" fill="url(#colorTotal)" strokeWidth={4} />
                             </AreaChart>
                         </ResponsiveContainer>

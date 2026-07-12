@@ -61,6 +61,79 @@ class BancoModelo {
             mapaGastos[gastosPorFondo.fondo_id] = Number(gastosPorFondo.total_gastos);
         }
 
+        // 4.5 Módulo de Ventas: Préstamos internos y ganancias (multi-fondo)
+        const [ventasEventos] = await conexion.query(`
+            SELECT 
+                e.id,
+                COALESCE((SELECT SUM(precio) FROM ventas_gastos WHERE evento_id = e.id), 0) AS capital_invertido,
+                COALESCE((
+                    SELECT SUM(a.monto_abonado) 
+                    FROM ventas_abonos a 
+                    JOIN ventas_asignaciones asig ON a.asignacion_id = asig.id 
+                    WHERE asig.evento_id = e.id
+                ), 0) AS capital_recuperado
+            FROM ventas_eventos e
+        `);
+
+        // Para cada evento buscar los fondos prestamistas reales
+        const [ventasFondosPrestamos] = await conexion.query(`
+            SELECT fp.evento_id, fp.fondo_id, fp.monto_prestado
+            FROM ventas_fondos_prestamos fp
+        `);
+
+        let ventasPrestadoPorFondo = {}; // Cuánto dinero falta por devolver a cada fondo
+        let ventasGanancia = 0; // Excedente que va al fondo Ventas (id=4)
+        
+        let ventasDetalleGlobal = {
+            total_prestado_fondos: 0,
+            total_invertido_gastos: 0,
+            total_recaudado: 0,
+            ganancia_neta: 0,
+            prestado_pendiente_por_fondo: {},
+            por_evento: []
+        };
+
+        ventasEventos.forEach(ev => {
+            const invertido = Number(ev.capital_invertido);
+            const recuperado = Number(ev.capital_recuperado);
+
+            // Obtener los fondos prestamistas de este evento
+            const fondosEv = ventasFondosPrestamos.filter(fp => fp.evento_id === ev.id);
+            const totalPrestado = fondosEv.reduce((s, fp) => s + Number(fp.monto_prestado), 0);
+
+            ventasDetalleGlobal.total_prestado_fondos += totalPrestado;
+            ventasDetalleGlobal.total_invertido_gastos += invertido;
+            ventasDetalleGlobal.total_recaudado += recuperado;
+
+            let detalleEvento = {
+                id: ev.id,
+                prestado: totalPrestado,
+                recuperado: recuperado,
+                ganancia: 0,
+                faltante_por_devolver: 0
+            };
+
+            if (recuperado < totalPrestado) {
+                // Aún no se recupera todo lo prestado: distribuir el déficit proporcional a cada fondo
+                const falta = totalPrestado - recuperado;
+                detalleEvento.faltante_por_devolver = falta;
+                const ratio = totalPrestado > 0 ? falta / totalPrestado : 0;
+                fondosEv.forEach(fp => {
+                    const faltaFondo = Number(fp.monto_prestado) * ratio;
+                    ventasPrestadoPorFondo[fp.fondo_id] = (ventasPrestadoPorFondo[fp.fondo_id] || 0) + faltaFondo;
+                    ventasDetalleGlobal.prestado_pendiente_por_fondo[fp.fondo_id] = (ventasDetalleGlobal.prestado_pendiente_por_fondo[fp.fondo_id] || 0) + faltaFondo;
+                });
+            } else if (recuperado > totalPrestado) {
+                // El préstamo ya se pagó, el excedente es ganancia del fondo Ventas
+                const gananciaEvento = recuperado - totalPrestado;
+                ventasGanancia += gananciaEvento;
+                ventasDetalleGlobal.ganancia_neta += gananciaEvento;
+                detalleEvento.ganancia = gananciaEvento;
+            }
+            
+            ventasDetalleGlobal.por_evento.push(detalleEvento);
+        });
+
         // 5. Capital prestado actualmente en la calle (agrupado por fuente ID)
         const [prestadoPorFuente] = await conexion.query(`
             SELECT 
@@ -80,13 +153,14 @@ class BancoModelo {
         prestadoPorFuente.forEach(item => { mapaPrestado[item.fuente_id] = Number(item.capital_pendiente); });
 
         // Cálculo de Saldos Líquidos (Efectivo que hay en caja)
-        // 1 = Cuotas, 2 = Alcantarilla, 3 = Ganancias
-        const fuenteCuotas      = Number(cuotas.total) + Number(penalizaciones.total) - (mapaPrestado[1] || 0) - (mapaGastos[1] || 0);
-        const fuenteAlcantarilla = recaudoNetoAlcantarilla - (mapaPrestado[2] || 0) - (mapaGastos[2] || 0);
-        const fuenteIntereses    = Number(intereses.total) - (mapaPrestado[3] || 0) - (mapaGastos[3] || 0);
+        // 1 = Cuotas, 2 = Alcantarilla, 3 = Ganancias, 4 = Ventas
+        const fuenteCuotas       = Number(cuotas.total) + Number(penalizaciones.total) - (mapaPrestado[1] || 0) - (mapaGastos[1] || 0) - (ventasPrestadoPorFondo[1] || 0);
+        const fuenteAlcantarilla = recaudoNetoAlcantarilla - (mapaPrestado[2] || 0) - (mapaGastos[2] || 0) - (ventasPrestadoPorFondo[2] || 0);
+        const fuenteIntereses    = Number(intereses.total) - (mapaPrestado[3] || 0) - (mapaGastos[3] || 0) - (ventasPrestadoPorFondo[3] || 0);
+        const fuenteVentas       = ventasGanancia - (mapaPrestado[4] || 0) - (mapaGastos[4] || 0) - (ventasPrestadoPorFondo[4] || 0);
 
-        const fondoTotalLíquido = fuenteCuotas + fuenteAlcantarilla + fuenteIntereses;
-        const capitalEnLaCalle  = Object.values(mapaPrestado).reduce((a, b) => a + b, 0);
+        const fondoTotalLíquido = fuenteCuotas + fuenteAlcantarilla + fuenteIntereses + fuenteVentas;
+        const capitalEnLaCalle  = Object.values(mapaPrestado).reduce((a, b) => a + b, 0) + Object.values(ventasPrestadoPorFondo).reduce((a, b) => a + b, 0);
         const fondoPatrimonialTotal = fondoTotalLíquido + capitalEnLaCalle;
 
         // Obtener metas configuradas y calcular cuánto le corresponde a cada una sobre el Fondo Patrimonial Total
@@ -123,6 +197,7 @@ class BancoModelo {
                 cuotas:            fuenteCuotas,
                 alcantarilla:      fuenteAlcantarilla,
                 intereses_prestamos: fuenteIntereses,
+                ventas:            fuenteVentas,
                 penalizaciones_total: Number(penalizaciones.total),
                 penalizaciones_pendientes_monto: penalizacionesPendientesMonto,
                 penalizaciones_pendientes_count: penalizacionesPendientesCount
@@ -131,7 +206,8 @@ class BancoModelo {
             deuda_total_pendiente: Number(deuda.total_deuda),
             capital_prestado_activo: capitalEnLaCalle,
             historico_fondos:      historial,
-            historico_por_mes:     porMes
+            historico_por_mes:     porMes,
+            ventas_detalle:        ventasDetalleGlobal
         };
     }
 
@@ -153,6 +229,14 @@ class BancoModelo {
             (SELECT 'abono_capital', capital_pagado, fecha_abono, p.fuente_id FROM prestamo_abonos a JOIN prestamos p ON a.prestamo_id = p.id)
             UNION ALL
             (SELECT 'abono_interes', interes_pagado, fecha_abono, 3 FROM prestamo_abonos)
+            UNION ALL
+            (SELECT 'gasto_ventas', -(g.precio * fp.monto_prestado / tot.total_prest), DATE(g.created_at), fp.fondo_id
+             FROM ventas_gastos g
+             JOIN ventas_fondos_prestamos fp ON fp.evento_id = g.evento_id
+             JOIN (SELECT evento_id, SUM(monto_prestado) AS total_prest FROM ventas_fondos_prestamos GROUP BY evento_id) tot ON tot.evento_id = g.evento_id
+             WHERE tot.total_prest > 0)
+            UNION ALL
+            (SELECT 'ingreso_ventas', monto_abonado, DATE(a.fecha_registro), 4 FROM ventas_abonos a)
             ORDER BY fecha ASC
         `;
 
@@ -164,6 +248,7 @@ class BancoModelo {
         let balanceCuotas = 0;
         let balanceAlcantarilla = 0;
         let balanceGanancias = 0;
+        let balanceVentas = 0;
         let balancePenalizaciones = 0;
 
         movimientos.forEach(m => {
@@ -176,6 +261,7 @@ class BancoModelo {
             }
             else if (m.fondo_id === 2) balanceAlcantarilla += v;
             else if (m.fondo_id === 3) balanceGanancias += v;
+            else if (m.fondo_id === 4) balanceVentas += v;
 
             historialPorMes[mes] = {
                 mes,
@@ -183,7 +269,8 @@ class BancoModelo {
                 penalizaciones: balancePenalizaciones,
                 alcantarilla: balanceAlcantarilla,
                 ganancias: balanceGanancias,
-                total: balanceCuotas + balanceAlcantarilla + balanceGanancias
+                ventas: balanceVentas,
+                total: balanceCuotas + balanceAlcantarilla + balanceGanancias + balanceVentas
             };
         });
 
@@ -254,11 +341,12 @@ class BancoModelo {
                     p.nombre, 
                     COALESCE(v.monto_pagado, 0) as pagado, 
                     COALESCE(v.unidades_vendidas, 0) as vendidas
-                FROM personas p
+                FROM alcantarilla_participantes ap
+                JOIN personas p ON ap.persona_id = p.id
                 LEFT JOIN alcantarilla_ventas v ON v.persona_id = p.id AND v.alcantarilla_id = ?
-                WHERE p.fecha_ingreso <= ? 
+                WHERE ap.alcantarilla_id = ?
                   AND COALESCE(v.monto_pagado, 0) < (? * ?)
-            `, [alc.id, alc.fecha, alc.tope_por_persona, alc.precio_boleta]);
+            `, [alc.id, alc.id, alc.tope_por_persona, alc.precio_boleta]);
             
             if (ventas.length > 0) {
                 deudoresAlcantarilla.push({
@@ -276,6 +364,40 @@ class BancoModelo {
             }
         }
 
+        // 4.5 Deudores de Ventas (Eventos activos)
+        const [eventosVentasActivos] = await conexion.query('SELECT * FROM ventas_eventos WHERE estado = "activo"');
+        const deudoresVentas = [];
+        let ventasTotalesRecaudo = 0;
+        
+        for (const ev of eventosVentasActivos) {
+            const [asignaciones] = await conexion.query(`
+                SELECT 
+                    p.nombre, 
+                    a.total_esperado,
+                    COALESCE((SELECT SUM(monto_abonado) FROM ventas_abonos WHERE asignacion_id = a.id), 0) AS pagado
+                FROM ventas_asignaciones a
+                JOIN personas p ON a.persona_id = p.id
+                WHERE a.evento_id = ?
+            `, [ev.id]);
+            
+            const deudores = asignaciones
+                .filter(a => a.pagado < a.total_esperado)
+                .map(a => ({
+                    nombre: a.nombre,
+                    deuda_pesos: a.total_esperado - a.pagado
+                }));
+                
+            if (deudores.length > 0) {
+                deudoresVentas.push({
+                    evento: ev.nombre,
+                    deudores: deudores
+                });
+            }
+        }
+
+        const [[ventasAbonosTotales]] = await conexion.query('SELECT COALESCE(SUM(monto_abonado), 0) as total FROM ventas_abonos');
+        ventasTotalesRecaudo = Number(ventasAbonosTotales.total);
+
         // 5. Consolidado por fondo (Resumen histórico)
         const [[cuotasTotal]] = await conexion.query(`SELECT COALESCE(SUM(monto), 0) AS subtotal FROM pagos WHERE tipo_pago = 'cuota' OR tipo_pago IS NULL`);
         const [[penalizacionesTotal]] = await conexion.query(`SELECT COALESCE(SUM(monto), 0) AS subtotal FROM pagos WHERE tipo_pago = 'penalizacion'`);
@@ -288,12 +410,14 @@ class BancoModelo {
             prestamos_activos: prestamosActivos,
             gastos: gastosDetalle,
             deudores_alcantarilla: deudoresAlcantarilla,
+            deudores_ventas: deudoresVentas,
             totales_historicos: {
                 cuotas: Number(cuotasTotal.subtotal),
                 penalizaciones: Number(penalizacionesTotal.subtotal),
                 alcantarilla: Number(alcantarillaTotal.subtotal),
                 alcantarilla_premios: Number(alcantarillaPremios.subtotal),
-                ganancias: Number(interesTotal.subtotal)
+                ganancias: Number(interesTotal.subtotal),
+                ventas: ventasTotalesRecaudo
             }
         };
     }

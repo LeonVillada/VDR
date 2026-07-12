@@ -66,8 +66,13 @@ const Gastos = () => {
         setMensaje({ tipo: '', texto: '' });
 
         try {
-            // 1. Crear el gasto base
-            const data = await gastosApi.create(nuevoGasto);
+            // 1. Crear el gasto base (convertir valores numéricos)
+            const gastoParaEnviar = {
+                ...nuevoGasto,
+                precio: Number(nuevoGasto.precio),
+                fondo_id: Number(nuevoGasto.fondo_id)
+            };
+            const data = await gastosApi.create(gastoParaEnviar);
 
             // 2. Subir facturas si existen
             if (facturas.length > 0 && !nuevoGasto.sin_factura) {
