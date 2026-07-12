@@ -126,5 +126,28 @@ export const eventosApi = {
     eliminarGasto:    (id)       => api.delete(`/eventos/gastos/${id}`),
 };
 
+export const ventasApi = {
+    getFondosDisponibilidad: ()         => api.get('/ventas/fondos-disponibilidad'),
+    getAll:           ()         => api.get('/ventas'),
+    create:           (data)     => api.post('/ventas', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    updateEstado:     (id, data) => api.put(`/ventas/${id}/estado`, data),
+    delete:           (id)       => api.delete(`/ventas/${id}`),
+    
+    getGastos:        (id)       => api.get(`/ventas/${id}/gastos`),
+    registrarGasto:   (data)     => api.post('/ventas/gastos', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    eliminarGasto:    (id)       => api.delete(`/ventas/gastos/${id}`),
+    
+    getAsignaciones:  (id)       => api.get(`/ventas/${id}/asignaciones`),
+    asignarIntegrantes: (id, data) => api.post(`/ventas/${id}/asignaciones`, data),
+    eliminarAsignacion: (id)     => api.delete(`/ventas/asignaciones/${id}`),
+
+    getAbonos:        (id)       => api.get(`/ventas/${id}/abonos`),
+    registrarAbono:   (data)     => api.post('/ventas/abonos', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    eliminarAbono:    (id)       => api.delete(`/ventas/abonos/${id}`),
+    
+    updateCantidad:   (id, data) => api.put(`/ventas/${id}/cantidad`, data),
+    updatePrecio:     (id, data) => api.put(`/ventas/${id}/precio`, data),
+};
+
 export default api;
 

@@ -221,12 +221,39 @@ export const generateMasterPDF = async (data, banco) => {
         });
     }
 
-    // --- 5. GASTOS ---
+    // --- 5. DEUDORES VENTAS ---
+    if (data.deudores_ventas && data.deudores_ventas.length > 0) {
+        if (y > 200) { doc.addPage(); drawPageAesthetics(doc); y = 60; }
+        doc.setFontSize(14);
+        doc.text('5. DEUDORES DE VENTAS', margin, y);
+        y += 8;
+
+        data.deudores_ventas.forEach(vta => {
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...cGreen);
+            doc.text(`Evento: ${vta.evento.toUpperCase()}`, margin, y);
+            y += 5;
+            
+            autoTable(doc, {
+                startY: y,
+                head: [['NOMBRE INTEGRANTE', 'VALOR ESTIMADO']],
+                body: vta.deudores.map(d => [d.nombre.toUpperCase(), fmt(d.deuda_pesos)]),
+                theme: 'plain',
+                styles: { fontSize: 8, textColor: [50, 50, 50] },
+                headStyles: { fillColor: false, textColor: cDark, fontStyle: 'bold', lineWidth: { bottom: 0.5 } },
+                columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } }
+            });
+            y = (doc.lastAutoTable?.finalY || y) + 12;
+        });
+    }
+
+    // --- 6. GASTOS ---
     if (y > 200) { doc.addPage(); drawPageAesthetics(doc); y = 60; }
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...cDark);
-    doc.text('5. REGISTRO DE GASTOS Y FACTURAS', margin, y);
+    doc.text('6. REGISTRO DE GASTOS Y FACTURAS', margin, y);
     y += 8;
 
     autoTable(doc, {
@@ -243,7 +270,7 @@ export const generateMasterPDF = async (data, banco) => {
         columnStyles: { 2: { halign: 'right', fontStyle: 'bold' } }
     });
 
-    // --- 6. ANEXOS / IMÁGENES DE GASTOS ---
+    // --- 7. ANEXOS / IMÁGENES DE GASTOS ---
     const gastosConImagen = data.gastos.filter(g => g.imagenes);
     if (gastosConImagen.length > 0) {
         // Cargar todas las imagenes primero
@@ -284,7 +311,7 @@ export const generateMasterPDF = async (data, banco) => {
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(...cDark);
-            doc.text('6. ANEXOS FOTOGRÁFICOS', margin, 60);
+            doc.text('7. ANEXOS FOTOGRÁFICOS', margin, 60);
 
             let xObj = margin;
             let yObj = 70;

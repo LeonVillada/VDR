@@ -4,7 +4,7 @@ class AlcantarillaModelo {
 
     // ── ALCANTARILLAS ──────────────────────────────────────────
     static async crear(datos) {
-        const { nombre, fecha, precio_boleta, costo_premio, tope_por_persona, comprobante_premio } = datos;
+        const { nombre, fecha, precio_boleta, costo_premio, tope_por_persona, comprobante_premio, participante_ids } = datos;
         const [result] = await conexion.query(
             `INSERT INTO alcantarillas (nombre, fecha, precio_boleta, costo_premio, tope_por_persona, comprobante_premio)
              VALUES (?, ?, ?, ?, ?, ?)`,
@@ -17,7 +17,25 @@ class AlcantarillaModelo {
                 comprobante_premio || null
             ]
         );
-        return result.insertId;
+        const alcantarillaId = result.insertId;
+
+        // Insertar participantes
+        let ids = [];
+        if (typeof participante_ids === 'string') {
+            ids = participante_ids.split(',').map(Number).filter(Boolean);
+        } else if (Array.isArray(participante_ids)) {
+            ids = participante_ids.map(Number).filter(Boolean);
+        }
+
+        if (ids.length > 0) {
+            const values = ids.map(pId => [alcantarillaId, pId]);
+            await conexion.query(
+                `INSERT INTO alcantarilla_participantes (alcantarilla_id, persona_id) VALUES ?`,
+                [values]
+            );
+        }
+
+        return alcantarillaId;
     }
 
     static async obtenerTodas() {
@@ -26,7 +44,8 @@ class AlcantarillaModelo {
                 COALESCE(SUM(v.unidades_vendidas), 0) AS total_unidades,
                 COALESCE(SUM(v.monto_pagado), 0)      AS total_recaudado,
                 COUNT(DISTINCT v.persona_id)           AS personas_registradas,
-                (SELECT COUNT(*) FROM personas p WHERE p.fecha_ingreso <= a.fecha) AS total_personas_activas
+                (SELECT COUNT(*) FROM alcantarilla_participantes ap WHERE ap.alcantarilla_id = a.id) AS total_personas_activas,
+                (SELECT GROUP_CONCAT(ap.persona_id) FROM alcantarilla_participantes ap WHERE ap.alcantarilla_id = a.id) AS participante_ids
             FROM alcantarillas a
             LEFT JOIN alcantarilla_ventas v ON v.alcantarilla_id = a.id
             GROUP BY a.id
@@ -97,10 +116,10 @@ class AlcantarillaModelo {
             FROM alcantarillas
         `);
 
-        // Meta esperada = SUM(precio_boleta × tope_por_persona × count(personas_activas_at_the_time)) por cada alcantarilla
+        // Meta esperada = SUM(precio_boleta × tope_por_persona × count(participantes)) por cada alcantarilla
         const [metaAlcs] = await conexion.query(`
             SELECT COALESCE(SUM(
-                (SELECT COUNT(*) FROM personas p WHERE p.fecha_ingreso <= a.fecha) * a.precio_boleta * a.tope_por_persona
+                (SELECT COUNT(*) FROM alcantarilla_participantes ap WHERE ap.alcantarilla_id = a.id) * a.precio_boleta * a.tope_por_persona
             ), 0) AS esperado
             FROM alcantarillas a
         `);

@@ -27,6 +27,7 @@ import Gastos        from './pages/Gastos';
 import Fondos        from './pages/Fondos';
 import FondosEspecificos from './pages/FondosEspecificos';
 import Eventos from './pages/Eventos';
+import Ventas from './pages/Ventas';
 
 const SidebarItem = ({ to, icon: Icon, label, onClick }) => {
   const location = useLocation();
@@ -90,6 +91,7 @@ function App() {
             <SidebarItem to="/banco" icon={Building2} label="Banco General VDR" onClick={closeSidebar} />
             <SidebarItem to="/prestamos" icon={HandCoins} label="Préstamos" onClick={closeSidebar} />
             <SidebarItem to="/gastos" icon={CreditCard} label="Gastos" onClick={closeSidebar} />
+            <SidebarItem to="/ventas" icon={Zap} label="Módulo Ventas" onClick={closeSidebar} />
             <SidebarItem to="/fondos" icon={CreditCard} label="Fondos" onClick={closeSidebar} />
             <SidebarItem to="/fondos-especificos" icon={CreditCard} label="Fondos Específicos" onClick={closeSidebar} />
             <SidebarItem to="/eventos" icon={CalendarDays} label="Eventos" onClick={closeSidebar} />
@@ -107,6 +109,7 @@ function App() {
               <Route path="/banco" element={<BancoGeneral />} />
               <Route path="/prestamos" element={<Prestamos />} />
               <Route path="/gastos" element={<Gastos />} />
+              <Route path="/ventas" element={<Ventas />} />
               <Route path="/fondos" element={<Fondos />} />
               <Route path="/fondos-especificos" element={<FondosEspecificos />} />
               <Route path="/eventos" element={<Eventos />} />

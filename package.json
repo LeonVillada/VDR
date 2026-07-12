@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node servidor.js",
-    "dev": "node --watch servidor.js"
+    "start": "node init && node servidor.js",
+    "dev": "node init && node --watch servidor.js"
   },
   "keywords": [],
   "author": "",
